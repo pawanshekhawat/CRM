@@ -47,10 +47,11 @@ if not defined PY_CMD (
 
 if not defined PY_CMD (
     echo.
-    echo [ERROR] No valid Python interpreter with PySide6 found on this system.
-    echo Please ensure Python 3.10+ and PySide6 are installed.
-    pause
-    exit /b 1
+    echo [NOTICE] Required dependencies (PySide6) are not yet installed.
+    echo Launching automated requirement installer...
+    echo.
+    call "%~dp0setup_requirements.bat"
+    exit /b %errorlevel%
 )
 
 %PY_CMD% "%~dp0app\main.py"
