@@ -12,7 +12,7 @@ RELEASE_DIR = ROOT_DIR / "release"
 APP_MAIN = ROOT_DIR / "app" / "main.py"
 
 print("========================================================")
-print("Building Standalone Portable Personal CRM (.exe)")
+print("Building Standalone Single-File Personal CRM (.exe)")
 print(f"Root Directory: {ROOT_DIR}")
 print("========================================================")
 
@@ -74,14 +74,14 @@ HIDDEN_IMPORTS = [
     "PySide6.QtPrintSupport",
 ]
 
-# Build PyInstaller command
+# Build PyInstaller command with --onefile
 cmd = [
     sys.executable,
     "-m",
     "PyInstaller",
     "--noconfirm",
     "--clean",
-    "--onedir",
+    "--onefile",
     "--windowed",
     "--name",
     "PersonalCRM",
@@ -94,26 +94,40 @@ for imp in HIDDEN_IMPORTS:
 
 cmd.append(str(APP_MAIN))
 
-print("\nRunning PyInstaller...")
+print("\nRunning PyInstaller (--onefile)...")
 result = subprocess.run(cmd, cwd=str(ROOT_DIR))
 
 if result.returncode != 0:
     print(f"\n[ERROR] PyInstaller build failed with exit code {result.returncode}")
     sys.exit(result.returncode)
 
-TARGET_DIST = DIST_DIR / "PersonalCRM"
-print(f"\n[SUCCESS] PyInstaller build completed at {TARGET_DIST}")
+ONEFILE_EXE = DIST_DIR / "PersonalCRM.exe"
+print(f"\n[SUCCESS] Single-file executable built: {ONEFILE_EXE}")
 
-# Prepare the portable release package
-print("\nPackaging portable standalone release (with data isolation)...")
+# Clean up temporary build artifacts to avoid confusion
+if BUILD_DIR.exists():
+    print(f"Cleaning up temporary build folder: {BUILD_DIR}...")
+    try:
+        shutil.rmtree(BUILD_DIR)
+    except Exception as e:
+        print(f"Note: Could not completely remove build dir: {e}")
 
-# 1. Copy data directory
-dest_data = TARGET_DIST / "data"
+# Prepare Standalone Portable Release Folder
+RELEASE_FOLDER = RELEASE_DIR / "PersonalCRM_Portable"
+print(f"\nCreating portable release package in: {RELEASE_FOLDER}...")
+
+if RELEASE_FOLDER.exists():
+    shutil.rmtree(RELEASE_FOLDER)
+RELEASE_FOLDER.mkdir(parents=True, exist_ok=True)
+
+# 1. Copy the single .exe into the release folder and root
+shutil.copy2(ONEFILE_EXE, RELEASE_FOLDER / "PersonalCRM.exe")
+
+# 2. Copy data directory
+dest_data = RELEASE_FOLDER / "data"
 src_data = ROOT_DIR / "data"
 if src_data.exists():
     print(f"Copying database and attachments from {src_data} to {dest_data}...")
-    if dest_data.exists():
-        shutil.rmtree(dest_data)
     shutil.copytree(src_data, dest_data, ignore=shutil.ignore_patterns("*.tmp", "temp", "backups"))
 
 # Ensure essential data subdirectories exist
@@ -124,18 +138,9 @@ if src_data.exists():
 (dest_data / "backups").mkdir(parents=True, exist_ok=True)
 (dest_data / "temp").mkdir(parents=True, exist_ok=True)
 
-# 2. Ensure logs and config directories exist
-(TARGET_DIST / "logs").mkdir(parents=True, exist_ok=True)
-(TARGET_DIST / "config").mkdir(parents=True, exist_ok=True)
-
-# 3. Create a Launcher batch script inside the distribution folder
-launcher_content = """@echo off
-title Personal CRM - Institute Edition (Portable)
-cd /d "%~dp0"
-start "" "%~dp0PersonalCRM.exe"
-exit
-"""
-(TARGET_DIST / "Start_Personal_CRM.bat").write_text(launcher_content, encoding="utf-8")
+# 3. Ensure logs and config directories exist
+(RELEASE_FOLDER / "logs").mkdir(parents=True, exist_ok=True)
+(RELEASE_FOLDER / "config").mkdir(parents=True, exist_ok=True)
 
 # 4. Create README for end users
 readme_content = """========================================================================
@@ -143,34 +148,33 @@ PERSONAL CRM - INSTITUTE EDITION (PORTABLE STANDALONE RELEASE)
 ========================================================================
 
 HOW TO RUN:
-1. Double-click 'PersonalCRM.exe' or 'Start_Personal_CRM.bat'.
-2. The application will launch instantly in isolated portable mode.
+1. Double-click 'PersonalCRM.exe'.
+2. The application will launch instantly with NO Python or setup needed!
 
 PORTABILITY & DATA PRIVACY:
 - All database records, student details, course catalogs, fee records,
   and image attachments stay strictly inside the 'data/' folder.
 - You can copy this entire folder to any USB flash drive or Windows PC.
-- No Python installation or runtime setup is required on the target PC.
+- No Python installation, pip dependencies, or setup required.
 
-FOLDER STRUCTURE:
-- PersonalCRM.exe       : Main application executable (Compiled binary)
+FOLDER CONTENTS:
+- PersonalCRM.exe       : Standalone application executable (Single-file)
 - data/                 : Local SQLite database & attachment photos
 - logs/                 : Application operation logs
 - config/               : Institute settings & custom configurations
 ========================================================================
 """
-(TARGET_DIST / "README_PORTABLE.txt").write_text(readme_content, encoding="utf-8")
+(RELEASE_FOLDER / "README_PORTABLE.txt").write_text(readme_content, encoding="utf-8")
 
 # 5. Create a clean ZIP archive for sharing
-RELEASE_DIR.mkdir(parents=True, exist_ok=True)
-zip_path = RELEASE_DIR / "PersonalCRM_Portable_Standalone.zip"
+zip_path = RELEASE_DIR / "PersonalCRM_Portable_v1.0.0.zip"
 print(f"\nCompressing release bundle into {zip_path}...")
 
 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-    for root, dirs, files in os.walk(TARGET_DIST):
+    for root, dirs, files in os.walk(RELEASE_FOLDER):
         for file in files:
             full_path = Path(root) / file
-            rel_path = full_path.relative_to(DIST_DIR)
+            rel_path = full_path.relative_to(RELEASE_DIR)
             zipf.write(full_path, rel_path)
 
 zip_size_mb = zip_path.stat().st_size / (1024 * 1024)
