@@ -90,6 +90,101 @@ def create_student_avatar_pixmap(photo_path_name: Optional[str], student_name: s
     return pixmap
 
 
+class StatusBadgeComboBox(QComboBox):
+    """Inline interactive Status dropdown badge that instantly persists status changes to SQLite DB."""
+
+    def __init__(self, student_id: str, current_status: str, on_change_callback, parent=None):
+        super().__init__(parent)
+        self.student_id = student_id
+        self.on_change_callback = on_change_callback
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(28)
+        self.setFixedWidth(130)
+
+        self.addItems(["Active", "Completed", "Dropout"])
+
+        # Block signals during initial setup
+        self.blockSignals(True)
+        idx = self.findText(current_status if current_status in ["Active", "Completed", "Dropout"] else "Active")
+        if idx >= 0:
+            self.setCurrentIndex(idx)
+        self.blockSignals(False)
+
+        self._apply_badge_style(self.currentText())
+        self.currentTextChanged.connect(self._handle_status_change)
+
+    def _apply_badge_style(self, status: str):
+        if status == "Active":
+            bg = "#10B9811C"
+            border = "#10B98177"
+            color = "#10B981"
+            arrow = "#10B981"
+        elif status == "Completed":
+            bg = "#3B82F61C"
+            border = "#3B82F677"
+            color = "#3B82F6"
+            arrow = "#3B82F6"
+        else:  # Dropout
+            bg = "#71717A24"
+            border = "#71717A77"
+            color = "#A1A1AA"
+            arrow = "#A1A1AA"
+
+        self.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {bg};
+                color: {color};
+                border: 1px solid {border};
+                border-radius: 14px;
+                padding-left: 14px;
+                padding-right: 26px;
+                font-size: 12px;
+                font-weight: 700;
+                min-height: 26px;
+            }}
+            QComboBox:hover {{
+                border: 1px solid {color};
+                background-color: {bg};
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                width: 22px;
+                border-left: none;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid {arrow};
+                margin-right: 8px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: #0F172A;
+                color: #F8FAFC;
+                border: 1px solid #334155;
+                selection-background-color: #1E293B;
+                selection-color: #38BDF8;
+                padding: 6px;
+                border-radius: 8px;
+                outline: none;
+                font-size: 12px;
+                font-weight: 600;
+                min-width: 130px;
+            }}
+            QComboBox QAbstractItemView::item {{
+                height: 28px;
+                padding-left: 10px;
+                border-radius: 4px;
+            }}
+        """)
+
+    def _handle_status_change(self, new_status: str):
+        self._apply_badge_style(new_status)
+        if self.on_change_callback:
+            self.on_change_callback(self.student_id, new_status)
+
+
 class StudentListView(QWidget):
     """Main Student Directory & Admission Management view."""
 
@@ -135,19 +230,37 @@ class StudentListView(QWidget):
         # Search Bar
         self.search_bar = SearchBar(placeholder="Search by Name, Mobile, Course, ID, College...")
         self.search_bar.searched.connect(self._on_filter_changed)
-        toolbar.addWidget(self.search_bar, 3)
+        self.search_bar.setMinimumWidth(200)
+        toolbar.addWidget(self.search_bar, 2)
 
         # Status Filter
         self.status_filter = QComboBox()
-        self.status_filter.addItems(["All Status", "Active", "Completed", "Dropped", "Inquiry"])
+        self.status_filter.addItems(["All Status", "Active", "Completed", "Dropout"])
+        self.status_filter.setMinimumWidth(125)
         self.status_filter.currentTextChanged.connect(self._on_filter_changed)
-        toolbar.addWidget(self.status_filter, 1)
+        toolbar.addWidget(self.status_filter, 0)
 
         # Fee Filter
         self.fee_filter = QComboBox()
         self.fee_filter.addItems(["All Fees", "Paid", "Partial", "Pending", "No Fee"])
+        self.fee_filter.setMinimumWidth(115)
         self.fee_filter.currentTextChanged.connect(self._on_filter_changed)
-        toolbar.addWidget(self.fee_filter, 1)
+        toolbar.addWidget(self.fee_filter, 0)
+
+        # Sort By Filter
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems([
+            "Sort: Default (ID)",
+            "Sort: Name (A-Z)",
+            "Sort: Name (Z-A)",
+            "Sort: Courses",
+            "Sort: Active Status",
+            "Sort: Latest Admissions",
+        ])
+        self.sort_combo.setMinimumWidth(185)
+        self.sort_combo.setToolTip("Sort students by Name, Course, Active Status, or ID")
+        self.sort_combo.currentTextChanged.connect(self._on_filter_changed)
+        toolbar.addWidget(self.sort_combo, 0)
 
         # Custom Fields Button
         custom_fields_btn = QPushButton("⚙️ Custom Fields")
@@ -169,9 +282,9 @@ class StudentListView(QWidget):
         parent_layout.addLayout(toolbar)
 
     def _build_table(self, parent_layout: QVBoxLayout):
-        self.table = QTableWidget(0, 5)
+        self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels([
-            "Student Name", "Contact Number", "Course Enrolled", "Fee Status", "Actions"
+            "Student Name", "Contact Number", "Course Enrolled", "Fee Status", "Status", "Actions"
         ])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -182,20 +295,36 @@ class StudentListView(QWidget):
         header.setSectionResizeMode(3, QHeaderView.Fixed)
         self.table.setColumnWidth(3, 195) # Dedicated 195px so full text "● Partial (Bal: ₹35,000)" never clips
         header.setSectionResizeMode(4, QHeaderView.Fixed)
-        self.table.setColumnWidth(4, 225) # Dedicated 225px for WhatsApp and View buttons
+        self.table.setColumnWidth(4, 160) # Dedicated 160px for Status dropdown badge
+        header.setSectionResizeMode(5, QHeaderView.Fixed)
+        self.table.setColumnWidth(5, 215) # Dedicated 215px for WhatsApp and View buttons
 
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
         self.table.doubleClicked.connect(self._on_row_double_click)
+        header.sectionClicked.connect(self._on_header_clicked)
 
         parent_layout.addWidget(self.table)
 
+    def _on_header_clicked(self, logical_index: int):
+        """Allow clicking on table headers to quickly change sort order."""
+        if logical_index == 0:  # Student Name
+            if self.sort_combo.currentText() == "Sort: Name (A-Z)":
+                self.sort_combo.setCurrentText("Sort: Name (Z-A)")
+            else:
+                self.sort_combo.setCurrentText("Sort: Name (A-Z)")
+        elif logical_index == 2:  # Course Enrolled
+            self.sort_combo.setCurrentText("Sort: Courses")
+        elif logical_index == 4:  # Status
+            self.sort_combo.setCurrentText("Sort: Active Status")
+
     def refresh_data(self):
-        """Fetch filtered students and update table and KPI cards."""
+        """Fetch filtered and sorted students and update table and KPI cards."""
         query = self.search_bar.text()
         status = self.status_filter.currentText()
         fee = self.fee_filter.currentText()
+        sort_by = self.sort_combo.currentText()
 
         status_val = None if status == "All Status" else status
         fee_val = None if fee == "All Fees" else fee
@@ -204,6 +333,7 @@ class StudentListView(QWidget):
             search_query=query,
             status_filter=status_val,
             fee_filter=fee_val,
+            sort_by=sort_by,
         )
 
         self._populate_table(students)
@@ -300,8 +430,23 @@ class StudentListView(QWidget):
             fee_badge.setToolTip(f"Net Fee: ₹{s.net_fee:,.2f} | Total Paid: ₹{s.total_paid:,.2f} | Balance: ₹{s.balance_due:,.2f}")
             f_layout.addWidget(fee_badge)
 
+            # 5. Inline Editable Status Badge Dropdown
+            status_widget = QWidget()
+            status_widget.setStyleSheet("background: transparent;")
+            st_layout = QHBoxLayout(status_widget)
+            st_layout.setContentsMargins(6, 4, 6, 4)
+            st_layout.setAlignment(Qt.AlignCenter)
 
-            # 5. Actions Widget (WhatsApp + View)
+            status_combo = StatusBadgeComboBox(
+                student_id=s.id,
+                current_status=s.status or "Active",
+                on_change_callback=self._on_inline_status_changed,
+                parent=self,
+            )
+            status_combo.setToolTip(f"Click to change status for {s.name} (instantly saved to DB)")
+            st_layout.addWidget(status_combo)
+
+            # 6. Actions Widget (WhatsApp + View)
             act_widget = QWidget()
             act_widget.setStyleSheet("background: transparent;")
             act_layout = QHBoxLayout(act_widget)
@@ -365,7 +510,22 @@ class StudentListView(QWidget):
             self.table.setItem(row_idx, 1, mobile_item)
             self.table.setItem(row_idx, 2, course_item)
             self.table.setCellWidget(row_idx, 3, fee_status_widget)
-            self.table.setCellWidget(row_idx, 4, act_widget)
+            self.table.setCellWidget(row_idx, 4, status_widget)
+            self.table.setCellWidget(row_idx, 5, act_widget)
+
+    def _on_inline_status_changed(self, student_id: str, new_status: str):
+        """Immediately updates student status in SQLite DB and updates dashboard stats."""
+        try:
+            success = StudentController.update_student_status(student_id, new_status)
+            if success:
+                self._update_kpi_metrics()
+                # Update in-memory reference
+                for st in getattr(self, "current_students", []):
+                    if st.id == student_id:
+                        st.status = new_status
+                        break
+        except Exception as e:
+            QMessageBox.critical(self, "Status Update Error", f"Failed to save status: {e}")
 
     def _open_whatsapp(self, mobile_no: str, student_name: str):
         """Opens WhatsApp application with the student's phone number."""

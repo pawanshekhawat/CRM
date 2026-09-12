@@ -27,6 +27,8 @@ from app.core.config import APP_NAME, APP_VERSION, DATABASE_PATH, LOGS_DIR, ROOT
 from app.core.database import init_db, close_db
 from app.modules.registry import module_registry
 from app.modules.students.student_module import StudentModule
+from app.modules.staff.staff_module import StaffModule
+from app.modules.courses.course_module import CourseModule
 from app.ui.theme import apply_theme
 
 
@@ -226,8 +228,10 @@ def main():
     # Ensure database initialized
     init_db()
 
-    # Register default modules (Students Module)
+    # Register default modules
     module_registry.register(StudentModule())
+    module_registry.register(StaffModule())
+    module_registry.register(CourseModule())
     module_registry.initialize_all()
 
     # Initialize PySide6 Application

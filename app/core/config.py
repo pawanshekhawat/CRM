@@ -15,6 +15,7 @@ else:
 DATA_DIR = ROOT_DIR / "data"
 ATTACHMENTS_DIR = DATA_DIR / "attachments"
 PHOTOS_DIR = ATTACHMENTS_DIR / "photos"
+ADMISSION_FORMS_DIR = ATTACHMENTS_DIR / "admission_forms"
 RECEIPTS_DIR = DATA_DIR / "receipts"
 EXPORTS_DIR = DATA_DIR / "exports"
 BACKUPS_DIR = DATA_DIR / "backups"
@@ -37,6 +38,7 @@ def init_directories():
         DATA_DIR,
         ATTACHMENTS_DIR,
         PHOTOS_DIR,
+        ADMISSION_FORMS_DIR,
         RECEIPTS_DIR,
         EXPORTS_DIR,
         BACKUPS_DIR,

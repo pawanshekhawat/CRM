@@ -84,7 +84,7 @@ class StudentFormDialog(QDialog):
         status_lbl = QLabel("Student Status:")
         status_lbl.setStyleSheet("font-weight: 600; color: #94A3B8;")
         self.status_combo = QComboBox()
-        self.status_combo.addItems(["Active", "Completed", "Dropped", "Inquiry"])
+        self.status_combo.addItems(["Active", "Completed", "Dropout"])
         self.status_combo.setMinimumWidth(140)
         bottom_bar_layout.addWidget(status_lbl)
         bottom_bar_layout.addWidget(self.status_combo)
@@ -293,12 +293,60 @@ class StudentFormDialog(QDialog):
 
         # Row 4: Primary Course Name
         grid.addWidget(QLabel("Course Name *"), 4, 0)
-        self.course_name_input = QLineEdit()
-        self.course_name_input.setPlaceholderText("e.g. Full Stack Development / AutoCAD")
-        grid.addWidget(self.course_name_input, 4, 1, 1, 3)
+        self.course_combo = QComboBox()
+        self.course_combo.setEditable(False)
+        self._populate_course_combo()
+        self.course_combo.currentIndexChanged.connect(self._on_course_selected)
+        grid.addWidget(self.course_combo, 4, 1)
+
+        grid.addWidget(QLabel("Assigned Faculty / Mentor"), 4, 2)
+        self.staff_combo = QComboBox()
+        self._populate_staff_combo()
+        grid.addWidget(self.staff_combo, 4, 3)
 
         card_layout.addLayout(grid)
         self.content_layout.addWidget(card)
+
+    def _populate_course_combo(self):
+        from app.modules.courses.controllers import CourseController
+        self.course_combo.clear()
+        self.course_combo.addItem("-- Select Course --", None)
+        try:
+            courses = CourseController.get_all_courses(status="Active")
+            for c in courses:
+                self.course_combo.addItem(f"{c.name} (₹{c.standard_fee:,.0f})", c.name)
+        except Exception:
+            pass
+
+    def _on_course_selected(self, index: int):
+        course_name = self.course_combo.currentData()
+        if not course_name:
+            text = self.course_combo.currentText().strip()
+            if text and not text.startswith("--"):
+                course_name = text.split(" (₹")[0].strip()
+
+        if not course_name:
+            return
+
+        try:
+            from app.modules.courses.controllers import CourseController
+            course = CourseController.get_course_by_name(course_name)
+            if course and course.standard_fee > 0:
+                self.total_fee_spin.setValue(course.standard_fee)
+                self._recalc_net_fee()
+        except Exception:
+            pass
+
+    def _populate_staff_combo(self):
+        from app.modules.staff.controllers import StaffController
+        self.staff_combo.clear()
+        self.staff_combo.addItem("-- Unassigned / No Faculty --", None)
+        try:
+            all_staff = StaffController.get_all_staff()
+            for st in all_staff:
+                self.staff_combo.addItem(f"{st.name} ({st.designation})", st.id)
+        except Exception:
+            pass
 
     def _build_contact_section(self):
         """Contact & Address Details."""
@@ -604,8 +652,29 @@ class StudentFormDialog(QDialog):
         self.father_occ_input.setText(s.father_occupation or "")
         self.college_input.setText(s.college_school or "")
         self.year_sem_input.setText(s.year_sem or "")
-        self.aadhar_input.setText(s.aadhar_no or "")
-        self.course_name_input.setText(s.course_name or "")
+        if s.course_name:
+            self.course_combo.blockSignals(True)
+            matched = False
+            for i in range(self.course_combo.count()):
+                data_val = self.course_combo.itemData(i)
+                if data_val and str(data_val).strip().lower() == s.course_name.strip().lower():
+                    self.course_combo.setCurrentIndex(i)
+                    matched = True
+                    break
+            if not matched:
+                for i in range(self.course_combo.count()):
+                    txt = self.course_combo.itemText(i)
+                    if s.course_name.strip().lower() in txt.lower() or (s.course_name.lower().startswith("master") and "master architecture" in txt.lower()):
+                        self.course_combo.setCurrentIndex(i)
+                        matched = True
+                        break
+            self.course_combo.blockSignals(False)
+
+        if s.assigned_staff_id:
+            for i in range(self.staff_combo.count()):
+                if self.staff_combo.itemData(i) == s.assigned_staff_id:
+                    self.staff_combo.setCurrentIndex(i)
+                    break
 
         self.mobile_input.setText(s.mobile_no or "")
         self.email_input.setText(s.email or "")
@@ -734,6 +803,13 @@ class StudentFormDialog(QDialog):
                 total_fee_val = sum_paid
                 net_fee_val = max(0.0, total_fee_val - discount_val)
 
+        # Format Course Name
+        course_text = self.course_combo.currentText().strip()
+        if course_text.startswith("--"):
+            course_name_val = None
+        else:
+            course_name_val = course_text.split(" (₹")[0].strip() or None
+
         student_data = {
             "id_no": id_no,
             "is_online": self.online_check.isChecked(),
@@ -745,7 +821,7 @@ class StudentFormDialog(QDialog):
             "dob": dob_val,
             "father_occupation": self.father_occ_input.text().strip() or None,
             "college_school": self.college_input.text().strip() or None,
-            "course_name": self.course_name_input.text().strip() or None,
+            "course_name": course_name_val,
             "year_sem": self.year_sem_input.text().strip() or None,
             "aadhar_no": self.aadhar_input.text().strip() or None,
             "mobile_no": mobile,
@@ -763,6 +839,7 @@ class StudentFormDialog(QDialog):
             "discount_amount": discount_val,
             "net_fee": net_fee_val,
             "fee_remarks": self.fee_remarks_input.text().strip() or None,
+            "assigned_staff_id": self.staff_combo.currentData(),
         }
 
         # Collect Custom Field Values

@@ -210,4 +210,85 @@ def test_running_due_installments():
     StudentController.delete_student(student.id)
 
 
+def test_admission_form_viewer_and_status():
+    from PySide6.QtWidgets import QApplication
+    import sys
+    import uuid
+    app = QApplication.instance() or QApplication(sys.argv)
+    from app.ui.widgets.form_image_viewer import FormImageViewer
 
+    test_id_no = f"CD-TEST-{uuid.uuid4().hex[:6]}"
+
+    # 1. Create student with admission form and Dropout status
+    student_data = {
+        "id_no": test_id_no,
+        "name": "Test Form Student",
+        "mobile_no": "9998887776",
+        "course_name": "Master Architecture",
+        "status": "Dropout",
+        "total_fee": 120000.0,
+        "discount_amount": 0.0,
+        "net_fee": 120000.0,
+        "admission_form_path": "form_CD-2026-0001.jpg",
+    }
+    student = StudentController.create_student(data=student_data)
+    assert student.id is not None
+    assert student.status == "Dropout"
+    assert student.admission_form_path == "form_CD-2026-0001.jpg"
+
+    try:
+        # 2. Test FormImageViewer widget
+        viewer = FormImageViewer(relative_form_path="form_CD-2026-0001.jpg", student_name=student.name)
+        assert viewer.relative_path == "form_CD-2026-0001.jpg"
+        viewer._zoom_in()
+        viewer._zoom_out()
+        viewer._actual_size()
+
+        # 3. Test update status
+        updated = StudentController.update_student(student.id, {"status": "Completed"})
+        assert updated.status == "Completed"
+
+        # 4. Test instant update_student_status method
+        success = StudentController.update_student_status(student.id, "Active")
+        assert success is True
+        refetched = StudentController.get_student_by_id(student.id)
+        assert refetched.status == "Active"
+
+        # 5. Test StatusBadgeComboBox widget
+        from app.modules.students.views.student_list_view import StatusBadgeComboBox
+        changed_status = []
+        combo = StatusBadgeComboBox(
+            student_id=student.id,
+            current_status=refetched.status,
+            on_change_callback=lambda sid, nst: changed_status.append((sid, nst))
+        )
+        assert combo.currentText() == "Active"
+        combo.setCurrentText("Dropout")
+        assert len(changed_status) == 1
+        assert changed_status[0] == (student.id, "Dropout")
+    finally:
+        # Clean up
+        StudentController.delete_student(student.id)
+
+
+def test_student_sorting_by_name_course_status():
+    # 1. Test Sort by Name A-Z
+    by_name_asc = StudentController.get_all_students(sort_by="Sort: Name (A-Z)")
+    names_asc = [s.name.lower() for s in by_name_asc]
+    assert names_asc == sorted(names_asc)
+
+    # 2. Test Sort by Name Z-A
+    by_name_desc = StudentController.get_all_students(sort_by="Sort: Name (Z-A)")
+    names_desc = [s.name.lower() for s in by_name_desc]
+    assert names_desc == sorted(names_desc, reverse=True)
+
+    # 3. Test Sort by Course
+    by_course = StudentController.get_all_students(sort_by="Sort: Courses")
+    courses = [s.course_name or "" for s in by_course]
+    assert courses == sorted(courses)
+
+    # 4. Test Sort by Active Status (Active first)
+    by_status = StudentController.get_all_students(sort_by="Sort: Active Status")
+    status_order_map = {"Active": 1, "Completed": 2, "Dropout": 3}
+    status_ranks = [status_order_map.get(s.status, 4) for s in by_status]
+    assert status_ranks == sorted(status_ranks)

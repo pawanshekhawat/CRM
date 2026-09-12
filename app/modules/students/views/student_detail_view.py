@@ -28,6 +28,7 @@ from app.models.student import Student
 from app.modules.students.controllers import StudentController
 from app.modules.students.reports import ReportGenerator
 from app.modules.students.views.student_form_dialog import StudentFormDialog
+from app.ui.widgets.form_image_viewer import FormImageViewer
 
 class StudentDetailView(QDialog):
     """Rich Student Profile View with fee ledger, session tracker, and instant PDF printer."""
@@ -40,8 +41,8 @@ class StudentDetailView(QDialog):
         self.student: Optional[Student] = None
 
         self.setWindowTitle("Student Profile & Admission Record")
-        self.setMinimumSize(880, 640)
-        self.resize(960, 700)
+        self.setMinimumSize(940, 720)
+        self.resize(1020, 780)
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(18, 18, 18, 18)
@@ -105,7 +106,7 @@ class StudentDetailView(QDialog):
         badges_row.setSpacing(8)
 
         # Status Badge
-        status_color = "#10B981" if s.status == "Active" else "#3B82F6" if s.status == "Completed" else "#EF4444"
+        status_color = "#10B981" if s.status == "Active" else "#3B82F6" if s.status == "Completed" else "#71717A" if s.status == "Dropout" else "#EF4444"
         status_badge = QLabel(f" {s.status} ")
         status_badge.setStyleSheet(f"background-color: {status_color}22; color: {status_color}; border: 1px solid {status_color}55; border-radius: 10px; font-size: 11px; font-weight: 600; padding: 2px 8px;")
         badges_row.addWidget(status_badge)
@@ -151,6 +152,37 @@ class StudentDetailView(QDialog):
         ov_grid.setHorizontalSpacing(16)
         ov_grid.setVerticalSpacing(10)
 
+        # Safely resolve assigned staff name
+        assigned_faculty_name = "Unassigned"
+        try:
+            if s.assigned_staff:
+                assigned_faculty_name = s.assigned_staff.name
+        except Exception:
+            if getattr(s, "assigned_staff_id", None):
+                try:
+                    from app.modules.staff.controllers import StaffController
+                    st = StaffController.get_staff_by_id(s.assigned_staff_id)
+                    if st:
+                        assigned_faculty_name = st.name
+                except Exception:
+                    pass
+
+        # Safely resolve enrolled batches
+        enrolled_batches_str = "None"
+        try:
+            if s.batches:
+                b_codes = [b.batch_code for b in s.batches if b]
+                if b_codes:
+                    enrolled_batches_str = ", ".join(b_codes)
+        except Exception:
+            try:
+                if s.batch_enrollments:
+                    b_codes = [enr.batch.batch_code for enr in s.batch_enrollments if enr.batch]
+                    if b_codes:
+                        enrolled_batches_str = ", ".join(b_codes)
+            except Exception:
+                pass
+
         details = [
             ("Student Name", s.name),
             ("Father's Name", s.father_name or "N/A"),
@@ -165,7 +197,9 @@ class StudentDetailView(QDialog):
             ("Father's Contact", s.father_contact_no or "N/A"),
             ("Alternate Contact (2.)", s.alternate_contact_no or "N/A"),
             ("Permanent Address", s.permanent_address or "N/A"),
-            ("District / State / PIN", f"{s.district or ''}, {s.state or ''} - {s.pin_code or ''}"),
+            ("Enrolled Course", s.course_name or "N/A"),
+            ("Assigned Faculty", assigned_faculty_name),
+            ("Enrolled Batches", enrolled_batches_str),
             ("Admission Date", s.admission_date.strftime("%d/%m/%Y") if s.admission_date else "N/A"),
             ("Declaration Agreed", "Yes" if s.declaration_agreed else "No"),
         ]
@@ -257,6 +291,19 @@ class StudentDetailView(QDialog):
         fee_layout.addWidget(inst_table)
         tabs.addTab(fee_tab, "💰 Fee Ledger & Installments")
 
+        # Tab 3: Admission Form Image Viewer
+        form_tab = QWidget()
+        form_layout = QVBoxLayout(form_tab)
+        form_layout.setContentsMargins(12, 12, 12, 12)
+        self.form_viewer = FormImageViewer(
+            relative_form_path=s.admission_form_path,
+            student_name=s.name,
+            parent=self,
+        )
+        self.form_viewer.form_uploaded.connect(self._on_form_uploaded)
+        form_layout.addWidget(self.form_viewer)
+        tabs.addTab(form_tab, "📑 Admission Form")
+
         # Tab 4: Dynamic Custom Fields
         custom_tab = QWidget()
         c_layout = QVBoxLayout(custom_tab)
@@ -300,6 +347,12 @@ class StudentDetailView(QDialog):
         b_row.addWidget(close_btn)
 
         self.main_layout.addLayout(b_row)
+
+    def _on_form_uploaded(self, rel_path: str):
+        if self.student:
+            StudentController.update_student(self.student.id, {"admission_form_path": rel_path})
+            self.student.admission_form_path = rel_path
+            self.student_updated.emit()
 
     def _on_print_pdf(self):
         try:

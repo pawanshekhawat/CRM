@@ -6,9 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.config import PHOTOS_DIR
+from app.core.config import ADMISSION_FORMS_DIR, PHOTOS_DIR
 from app.core.database import get_db_session
 from app.models.student import Student, StudentCourseSession, StudentFeeInstallment
+from app.models.staff import Staff, Batch, BatchStudent
 from app.models.custom_fields import CustomFieldDefinition, CustomFieldValue
 
 class StudentController:
@@ -20,15 +21,19 @@ class StudentController:
         status_filter: Optional[str] = None,
         course_filter: Optional[str] = None,
         fee_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
     ) -> List[Student]:
-        """Fetch students with optional filtering and search."""
+        """Fetch students with optional filtering, search, and dynamic sorting."""
         with get_db_session() as session:
             query = session.query(Student).options(
                 joinedload(Student.course_sessions),
                 joinedload(Student.fee_installments),
+                joinedload(Student.assigned_staff),
+                joinedload(Student.batches),
+                joinedload(Student.batch_enrollments).joinedload(BatchStudent.batch),
             )
 
-            if status_filter and status_filter != "All":
+            if status_filter and status_filter != "All" and status_filter != "All Status":
                 query = query.filter(Student.status == status_filter)
 
             if course_filter and course_filter != "All":
@@ -49,7 +54,33 @@ class StudentController:
                     )
                 )
 
-            students = query.order_by(Student.created_at.desc()).all()
+            # Dynamic sorting logic
+            from sqlalchemy import case
+            if sort_by:
+                s_lower = sort_by.lower()
+                if "name (a-z)" in s_lower or s_lower in ("name", "name_asc", "a-z"):
+                    query = query.order_by(Student.name.asc(), Student.id_no.asc())
+                elif "name (z-a)" in s_lower or s_lower in ("name_desc", "z-a"):
+                    query = query.order_by(Student.name.desc(), Student.id_no.asc())
+                elif "course" in s_lower:
+                    query = query.order_by(Student.course_name.asc(), Student.name.asc())
+                elif "status" in s_lower:
+                    # Active first, then Completed, then Dropout
+                    status_order = case(
+                        (Student.status == "Active", 1),
+                        (Student.status == "Completed", 2),
+                        (Student.status == "Dropout", 3),
+                        else_=4,
+                    )
+                    query = query.order_by(status_order.asc(), Student.name.asc())
+                elif "latest" in s_lower:
+                    query = query.order_by(Student.admission_date.desc(), Student.id_no.desc())
+                else:
+                    query = query.order_by(Student.id_no.asc())
+            else:
+                query = query.order_by(Student.id_no.asc())
+
+            students = query.all()
             
             # Post-filter on fee status if specified
             if fee_filter and fee_filter != "All":
@@ -75,6 +106,9 @@ class StudentController:
                 .options(
                     joinedload(Student.course_sessions),
                     joinedload(Student.fee_installments),
+                    joinedload(Student.assigned_staff),
+                    joinedload(Student.batches),
+                    joinedload(Student.batch_enrollments).joinedload(BatchStudent.batch),
                 )
                 .filter(Student.id == student_id)
                 .first()
@@ -105,6 +139,18 @@ class StudentController:
         return filename
 
     @staticmethod
+    def save_admission_form_attachment(source_path: str) -> str:
+        """Saves a scanned admission form into local attachments directory and returns relative filename."""
+        src = Path(source_path)
+        if not src.exists():
+            return ""
+        ext = src.suffix.lower() or ".jpg"
+        filename = f"form_{uuid.uuid4().hex[:12]}{ext}"
+        dest = ADMISSION_FORMS_DIR / filename
+        shutil.copy2(src, dest)
+        return filename
+
+    @staticmethod
     def create_student(
         data: Dict[str, Any],
         course_sessions_data: Optional[List[Dict[str, Any]]] = None,
@@ -122,6 +168,7 @@ class StudentController:
                 is_online=data.get("is_online", False),
                 online_reg_no=data.get("online_reg_no"),
                 photo_path=data.get("photo_path"),
+                admission_form_path=data.get("admission_form_path"),
                 name=data.get("name", "").strip(),
                 father_name=data.get("father_name"),
                 mother_name=data.get("mother_name"),
@@ -146,6 +193,7 @@ class StudentController:
                 discount_amount=float(data.get("discount_amount") or 0.0),
                 net_fee=float(data.get("net_fee") or 0.0),
                 fee_remarks=data.get("fee_remarks"),
+                assigned_staff_id=data.get("assigned_staff_id"),
             )
             session.add(student)
             session.flush() # Populate student.id
@@ -228,9 +276,6 @@ class StudentController:
         custom_values: Optional[Dict[str, str]] = None,
     ) -> Optional[Student]:
         """Update an existing student record, course sessions, installments, and custom fields."""
-        course_sessions_data = course_sessions_data or []
-        fee_installments_data = fee_installments_data or []
-        custom_values = custom_values or {}
         with get_db_session() as session:
             student = session.query(Student).filter(Student.id == student_id).first()
             if not student:
@@ -238,86 +283,100 @@ class StudentController:
 
             # Update core attributes
             for key in [
-                "id_no", "is_online", "online_reg_no", "photo_path", "name", "father_name",
+                "id_no", "is_online", "online_reg_no", "photo_path", "admission_form_path", "name", "father_name",
                 "mother_name", "dob", "father_occupation", "college_school", "course_name",
                 "year_sem", "aadhar_no", "mobile_no", "email", "father_contact_no",
                 "alternate_contact_no", "permanent_address", "district", "state", "pin_code",
                 "status", "admission_date", "declaration_agreed", "total_fee", "discount_amount",
-                "net_fee", "fee_remarks"
+                "net_fee", "fee_remarks", "assigned_staff_id"
             ]:
                 if key in data:
                     setattr(student, key, data[key])
 
-            # Replace Course Sessions
-            session.query(StudentCourseSession).filter(StudentCourseSession.student_id == student_id).delete()
-            for idx, cs in enumerate(course_sessions_data, start=1):
-                c_name = cs.get("course_name", "").strip()
-                if c_name:
-                    session_obj = StudentCourseSession(
+            # Replace Course Sessions only if explicitly provided
+            if course_sessions_data is not None:
+                session.query(StudentCourseSession).filter(StudentCourseSession.student_id == student_id).delete()
+                for idx, cs in enumerate(course_sessions_data, start=1):
+                    c_name = cs.get("course_name", "").strip()
+                    if c_name:
+                        session_obj = StudentCourseSession(
+                            student_id=student.id,
+                            session_order=idx,
+                            course_name=c_name,
+                            book_issued=bool(cs.get("book_issued", False)),
+                            book_details=cs.get("book_details"),
+                            student_signed=bool(cs.get("student_signed", False)),
+                        )
+                        session.add(session_obj)
+
+            # Replace Fee Installments only if explicitly provided
+            if fee_installments_data is not None:
+                session.query(StudentFeeInstallment).filter(StudentFeeInstallment.student_id == student_id).delete()
+                running_due = float(student.net_fee or 0.0)
+                for idx, inst in enumerate(fee_installments_data):
+                    inst_no = int(inst.get("installment_no", idx + 1))
+                    paid_amt = float(inst.get("paid_amount") or 0.0)
+
+                    # Compute running due
+                    if paid_amt > 0 or idx == 0:
+                        due_amt = running_due
+                    elif running_due > 0 and idx > 0 and (float(fee_installments_data[idx - 1].get("paid_amount") or 0.0) > 0):
+                        due_amt = running_due
+                    elif inst.get("due_amount") is not None and float(inst.get("due_amount") or 0.0) > 0:
+                        due_amt = float(inst.get("due_amount"))
+                    else:
+                        due_amt = 0.0
+
+                    # Determine status
+                    if paid_amt > 0:
+                        status = "Paid"
+                    elif due_amt > 0:
+                        status = "Pending"
+                    else:
+                        status = "Pending"
+
+                    installment_obj = StudentFeeInstallment(
                         student_id=student.id,
-                        session_order=idx,
-                        course_name=c_name,
-                        book_issued=bool(cs.get("book_issued", False)),
-                        book_details=cs.get("book_details"),
-                        student_signed=bool(cs.get("student_signed", False)),
+                        installment_no=inst_no,
+                        installment_label=inst.get("installment_label", f"{inst_no}th"),
+                        due_amount=due_amt,
+                        paid_amount=paid_amt,
+                        due_date=inst.get("due_date"),
+                        payment_date=inst.get("payment_date"),
+                        payment_mode=inst.get("payment_mode"),
+                        transaction_ref=inst.get("transaction_ref"),
+                        status=status,
+                        remarks=inst.get("remarks"),
                     )
-                    session.add(session_obj)
+                    session.add(installment_obj)
+                    running_due = max(0.0, running_due - paid_amt)
 
-            # Replace Fee Installments
-            session.query(StudentFeeInstallment).filter(StudentFeeInstallment.student_id == student_id).delete()
-            running_due = float(student.net_fee or 0.0)
-            for idx, inst in enumerate(fee_installments_data):
-                inst_no = int(inst.get("installment_no", idx + 1))
-                paid_amt = float(inst.get("paid_amount") or 0.0)
-
-                # Compute running due
-                if paid_amt > 0 or idx == 0:
-                    due_amt = running_due
-                elif running_due > 0 and idx > 0 and (float(fee_installments_data[idx - 1].get("paid_amount") or 0.0) > 0):
-                    due_amt = running_due
-                elif inst.get("due_amount") is not None and float(inst.get("due_amount") or 0.0) > 0:
-                    due_amt = float(inst.get("due_amount"))
-                else:
-                    due_amt = 0.0
-
-                # Determine status
-                if paid_amt > 0:
-                    status = "Paid"
-                elif due_amt > 0:
-                    status = "Pending"
-                else:
-                    status = "Pending"
-
-                installment_obj = StudentFeeInstallment(
-                    student_id=student.id,
-                    installment_no=inst_no,
-                    installment_label=inst.get("installment_label", f"{inst_no}th"),
-                    due_amount=due_amt,
-                    paid_amount=paid_amt,
-                    due_date=inst.get("due_date"),
-                    payment_date=inst.get("payment_date"),
-                    payment_mode=inst.get("payment_mode"),
-                    transaction_ref=inst.get("transaction_ref"),
-                    status=status,
-                    remarks=inst.get("remarks"),
-                )
-                session.add(installment_obj)
-                running_due = max(0.0, running_due - paid_amt)
-
-            # Replace Custom Field Values
-            session.query(CustomFieldValue).filter(CustomFieldValue.entity_id == student_id).delete()
-            for field_id, val_str in custom_values.items():
-                if val_str is not None and str(val_str).strip() != "":
-                    cf_val = CustomFieldValue(
-                        entity_id=student.id,
-                        field_id=field_id,
-                        value_text=str(val_str),
-                    )
-                    session.add(cf_val)
+            # Replace Custom Field Values only if explicitly provided
+            if custom_values is not None:
+                session.query(CustomFieldValue).filter(CustomFieldValue.entity_id == student_id).delete()
+                for field_id, val_str in custom_values.items():
+                    if val_str is not None and str(val_str).strip() != "":
+                        cf_val = CustomFieldValue(
+                            entity_id=student.id,
+                            field_id=field_id,
+                            value_text=str(val_str),
+                        )
+                        session.add(cf_val)
 
             session.commit()
 
         return StudentController.get_student_by_id(student_id)
+
+    @staticmethod
+    def update_student_status(student_id: str, new_status: str) -> bool:
+        """Instantly update student status in database."""
+        with get_db_session() as session:
+            student = session.query(Student).filter(Student.id == student_id).first()
+            if not student:
+                return False
+            student.status = new_status
+            session.commit()
+            return True
 
     @staticmethod
     def delete_student(student_id: str) -> bool:

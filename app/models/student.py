@@ -13,6 +13,7 @@ class Student(Base, TimestampMixin):
     is_online = Column(Boolean, default=False) # Online admission checkbox
     online_reg_no = Column(String(100), nullable=True) # Online registration ID/portal ref
     photo_path = Column(String(255), nullable=True) # Relative path to passport photo
+    admission_form_path = Column(String(255), nullable=True) # Relative path to scanned admission form image
 
     # Personal Information
     name = Column(String(150), nullable=False, index=True) # NAME
@@ -46,7 +47,24 @@ class Student(Base, TimestampMixin):
     net_fee = Column(Float, default=0.0) # Total - Discount
     fee_remarks = Column(Text, nullable=True) # Fee Remarks
 
+    # Faculty / Staff Assignment
+    assigned_staff_id = Column(String(36), ForeignKey("staff.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Relationships
+    assigned_staff = relationship("Staff", back_populates="assigned_students")
+
+    batch_enrollments = relationship(
+        "BatchStudent",
+        back_populates="student",
+        cascade="all, delete-orphan",
+    )
+
+    batches = relationship(
+        "Batch",
+        secondary="batch_students",
+        viewonly=True,
+    )
+
     course_sessions = relationship(
         "StudentCourseSession",
         back_populates="student",

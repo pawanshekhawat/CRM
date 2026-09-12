@@ -29,7 +29,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.close()
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
@@ -46,12 +46,42 @@ def get_db_session() -> Generator[Session, None, None]:
         session.close()
 
 def init_db():
-    """Create all database tables."""
+    """Create all database tables and perform lightweight schema updates."""
     # Import all models so metadata knows about them
     import app.models.student  # noqa: F401
     import app.models.custom_fields  # noqa: F401
+    import app.models.staff  # noqa: F401
+    import app.models.course  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight automatic schema migration for SQLite
+    try:
+        with engine.begin() as conn:
+            # Check students table columns
+            res = conn.exec_driver_sql("PRAGMA table_info(students)").fetchall()
+            existing_cols = {row[1] for row in res}
+            if existing_cols and "assigned_staff_id" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE students ADD COLUMN assigned_staff_id VARCHAR(36) REFERENCES staff(id) ON DELETE SET NULL")
+            if existing_cols and "admission_form_path" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE students ADD COLUMN admission_form_path VARCHAR(255)")
+    except Exception as e:
+        logger.warning(f"Schema migration note: {e}")
+
+    # Seed default courses if catalog is empty
+    try:
+        from app.modules.courses.controllers import CourseController
+        CourseController.seed_default_courses_if_empty()
+    except Exception as e:
+        logger.warning(f"Default courses seeding note: {e}")
+
+    # Seed default real staff members if directory is empty
+    try:
+        from app.modules.staff.controllers import StaffController
+        StaffController.seed_default_staff_if_empty()
+    except Exception as e:
+        logger.warning(f"Default staff seeding note: {e}")
+
     logger.info(f"Database initialized successfully at {DATABASE_PATH}")
 
 def close_db():
