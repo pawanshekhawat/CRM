@@ -1,0 +1,37 @@
+# Python virtual environments & bytecode
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Local Application Data & Databases (Strictly Private / Offline)
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Logs & Temporary Files
+logs/
+*.log
+*.tmp
+
+# Environment & Secrets
+.env
+.env.*
+*.secret
+
+# OS & Editor configurations
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.gemini/
