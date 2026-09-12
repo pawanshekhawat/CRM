@@ -6,6 +6,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QCompleter,
     QDateEdit,
     QDialog,
     QDoubleSpinBox,
@@ -30,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.config import PHOTOS_DIR
+from app.core.database import get_db_session
 from app.models.student import Student
 from app.modules.students.controllers import StudentController
 from app.ui.widgets.dynamic_fields import DynamicFieldsWidget
@@ -68,6 +70,7 @@ class StudentFormDialog(QDialog):
         self._build_personal_section()
         self._build_contact_section()
         self._build_fees_installment_section()
+        self._build_referral_section()
         self._build_custom_fields_section()
         self._build_declaration_section()
 
@@ -92,12 +95,16 @@ class StudentFormDialog(QDialog):
         bottom_bar_layout.addStretch()
 
         cancel_btn = QPushButton("Cancel")
+        cancel_btn.setAutoDefault(False)
+        cancel_btn.setDefault(False)
         cancel_btn.setMinimumWidth(100)
         cancel_btn.clicked.connect(self.reject)
         bottom_bar_layout.addWidget(cancel_btn)
 
         save_btn = QPushButton("💾 Save Admission Record" if not self.is_edit else "💾 Update Record")
         save_btn.setObjectName("primaryBtn")
+        save_btn.setAutoDefault(False)
+        save_btn.setDefault(False)
         save_btn.setMinimumWidth(190)
         save_btn.clicked.connect(self._on_save)
         bottom_bar_layout.addWidget(save_btn)
@@ -142,10 +149,13 @@ class StudentFormDialog(QDialog):
         id_row.addWidget(id_lbl)
         id_row.addWidget(self.id_input)
 
-        auto_btn = QPushButton("⚡ Auto ID")
-        auto_btn.setToolTip("Generate next sequential ID")
-        auto_btn.clicked.connect(lambda: self.id_input.setText(StudentController.generate_next_id_no()))
-        id_row.addWidget(auto_btn)
+        if not self.is_edit:
+            auto_btn = QPushButton("⚡ Auto ID")
+            auto_btn.setAutoDefault(False)
+            auto_btn.setDefault(False)
+            auto_btn.setToolTip("Generate next sequential ID")
+            auto_btn.clicked.connect(lambda: self.id_input.setText(StudentController.generate_next_id_no()))
+            id_row.addWidget(auto_btn)
 
         id_row.addSpacing(10)
         self.online_check = QCheckBox("Online Admission")
@@ -194,11 +204,15 @@ class StudentFormDialog(QDialog):
 
         photo_btn_row = QHBoxLayout()
         choose_photo_btn = QPushButton("📷 Choose")
+        choose_photo_btn.setAutoDefault(False)
+        choose_photo_btn.setDefault(False)
         choose_photo_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         choose_photo_btn.clicked.connect(self._on_choose_photo)
         photo_btn_row.addWidget(choose_photo_btn)
 
         clear_photo_btn = QPushButton("✕")
+        clear_photo_btn.setAutoDefault(False)
+        clear_photo_btn.setDefault(False)
         clear_photo_btn.setStyleSheet("padding: 4px 8px; font-size: 11px;")
         clear_photo_btn.clicked.connect(self._on_clear_photo)
         photo_btn_row.addWidget(clear_photo_btn)
@@ -412,15 +426,91 @@ class StudentFormDialog(QDialog):
         card_layout.addLayout(grid)
         self.content_layout.addWidget(card)
 
+    def _get_ordinal_label(self, row_idx: int) -> str:
+        """Returns ordinal string for row index (e.g. 1st, 2nd, 3rd, 10th, 11th, 12th)."""
+        n = row_idx + 1
+        if 11 <= (n % 100) <= 13:
+            suffix = "th"
+        else:
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+        return f"{n}{suffix}"
+
+    def _create_installment_row(self, row_idx: int, label: Optional[str] = None):
+        """Creates cell widgets for an installment row."""
+        if label is None:
+            label = self._get_ordinal_label(row_idx)
+
+        self.inst_table.setRowHeight(row_idx, 40)
+        lbl_item = QTableWidgetItem(f" {label} ")
+        lbl_item.setTextAlignment(Qt.AlignCenter)
+        lbl_item.setFlags(lbl_item.flags() ^ Qt.ItemIsEditable)
+        self.inst_table.setItem(row_idx, 0, lbl_item)
+
+        # Due Amount (Auto-computed running ledger balance)
+        due_spin = QDoubleSpinBox()
+        due_spin.setRange(0, 10000000)
+        due_spin.setDecimals(2)
+        due_spin.setReadOnly(True)
+        due_spin.setButtonSymbols(QDoubleSpinBox.NoButtons)
+        due_spin.setStyleSheet("background-color: #121824; color: #94A3B8; border: 1px solid #1E293B; border-radius: 6px; padding: 2px 6px;")
+        self.inst_table.setCellWidget(row_idx, 1, due_spin)
+
+        # Paid Amount
+        paid_spin = QDoubleSpinBox()
+        paid_spin.setRange(0, 10000000)
+        paid_spin.setDecimals(2)
+        paid_spin.setSingleStep(500)
+        paid_spin.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
+        paid_spin.valueChanged.connect(self._recalc_installments_summary)
+        self.inst_table.setCellWidget(row_idx, 2, paid_spin)
+
+        # Payment Date
+        date_edit = QDateEdit()
+        date_edit.setCalendarPopup(True)
+        date_edit.setDisplayFormat("dd/MM/yyyy")
+        date_edit.setDate(QDate.currentDate())
+        date_edit.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
+        self.inst_table.setCellWidget(row_idx, 3, date_edit)
+
+        # Mode
+        mode_combo = QComboBox()
+        mode_combo.addItems(["Cash", "UPI", "Bank Transfer", "Cheque", "Online"])
+        mode_combo.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
+        self.inst_table.setCellWidget(row_idx, 4, mode_combo)
+
+        # Receipt/Txn Ref
+        ref_input = QLineEdit()
+        ref_input.setPlaceholderText("Receipt # / UTR")
+        ref_input.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
+        self.inst_table.setCellWidget(row_idx, 5, ref_input)
+
+        # Remarks
+        remarks_input = QLineEdit()
+        remarks_input.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
+        self.inst_table.setCellWidget(row_idx, 6, remarks_input)
+
+    def _update_inst_table_height(self):
+        """Dynamically adjusts the installment table widget height based on total rows."""
+        row_count = self.inst_table.rowCount()
+        self.inst_table.setFixedHeight(36 + (row_count * 40) + 4)
+
+    def _on_add_installment_clicked(self):
+        """Appends a new installment row dynamically to the payment schedule."""
+        new_row_idx = self.inst_table.rowCount()
+        self.inst_table.insertRow(new_row_idx)
+        self._create_installment_row(new_row_idx)
+        self._update_inst_table_height()
+        self._recalc_installments_summary()
+
     def _build_fees_installment_section(self):
-        """Fee Structure & 10 Installments Table."""
+        """Fee Structure & Dynamic Installments Table."""
         card = QFrame()
         card.setObjectName("card")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(20, 18, 20, 18)
         card_layout.setSpacing(14)
 
-        title = QLabel("💰 Fees & 10-Installment Payment Schedule")
+        title = QLabel("💰 Fees & Installment Payment Schedule")
         title.setObjectName("sectionTitle")
         card_layout.addWidget(title)
 
@@ -454,7 +544,7 @@ class StudentFormDialog(QDialog):
 
         card_layout.addLayout(fee_controls)
 
-        # 10 Installment Grid Table
+        # Dynamic Installment Grid Table (Initial 10 rows)
         self.inst_table = QTableWidget(10, 7)
         self.inst_table.setHorizontalHeaderLabels([
             "Installment", "Due Amt (₹)", "Paid Amt (₹)", "Payment Date", "Payment Mode", "Receipt / UTR No.", "Remarks"
@@ -470,60 +560,38 @@ class StudentFormDialog(QDialog):
         self.inst_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.inst_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        ordinal_labels = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]
-        for row_idx, label in enumerate(ordinal_labels):
-            self.inst_table.setRowHeight(row_idx, 40)
-            lbl_item = QTableWidgetItem(f" {label} ")
-            lbl_item.setTextAlignment(Qt.AlignCenter)
-            lbl_item.setFlags(lbl_item.flags() ^ Qt.ItemIsEditable)
-            self.inst_table.setItem(row_idx, 0, lbl_item)
+        for row_idx in range(10):
+            self._create_installment_row(row_idx)
 
-            # Due Amount (Auto-computed running ledger balance)
-            due_spin = QDoubleSpinBox()
-            due_spin.setRange(0, 10000000)
-            due_spin.setDecimals(2)
-            due_spin.setReadOnly(True)
-            due_spin.setButtonSymbols(QDoubleSpinBox.NoButtons)
-            due_spin.setStyleSheet("background-color: #121824; color: #94A3B8; border: 1px solid #1E293B; border-radius: 6px; padding: 2px 6px;")
-            self.inst_table.setCellWidget(row_idx, 1, due_spin)
-
-            # Paid Amount
-            paid_spin = QDoubleSpinBox()
-            paid_spin.setRange(0, 10000000)
-            paid_spin.setDecimals(2)
-            paid_spin.setSingleStep(500)
-            paid_spin.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
-            paid_spin.valueChanged.connect(self._recalc_installments_summary)
-            self.inst_table.setCellWidget(row_idx, 2, paid_spin)
-
-            # Payment Date
-            date_edit = QDateEdit()
-            date_edit.setCalendarPopup(True)
-            date_edit.setDisplayFormat("dd/MM/yyyy")
-            date_edit.setDate(QDate.currentDate())
-            date_edit.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
-            self.inst_table.setCellWidget(row_idx, 3, date_edit)
-
-            # Mode
-            mode_combo = QComboBox()
-            mode_combo.addItems(["Cash", "UPI", "Bank Transfer", "Cheque", "Online"])
-            mode_combo.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
-            self.inst_table.setCellWidget(row_idx, 4, mode_combo)
-
-            # Receipt/Txn Ref
-            ref_input = QLineEdit()
-            ref_input.setPlaceholderText("Receipt # / UTR")
-            ref_input.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
-            self.inst_table.setCellWidget(row_idx, 5, ref_input)
-
-            # Remarks
-            remarks_input = QLineEdit()
-            remarks_input.setStyleSheet("background-color: #181E2C; border: 1px solid #283347; border-radius: 6px; padding: 2px 6px;")
-            self.inst_table.setCellWidget(row_idx, 6, remarks_input)
-
-        # Set fixed height to display all 10 rows completely
-        self.inst_table.setFixedHeight(36 + (10 * 40) + 4)
+        self._update_inst_table_height()
         card_layout.addWidget(self.inst_table)
+
+        # Button to Add More Installment Rows Dynamically
+        inst_btn_row = QHBoxLayout()
+        add_inst_btn = QPushButton("➕ Add Installment Row")
+        add_inst_btn.setAutoDefault(False)
+        add_inst_btn.setDefault(False)
+        add_inst_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                color: #38BDF8;
+                border: 1px dashed #38BDF866;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #0F172A;
+                border-color: #38BDF8;
+                color: #7DD3FC;
+            }
+        """)
+        add_inst_btn.setToolTip("Add 11th, 12th or further installment payment row")
+        add_inst_btn.clicked.connect(self._on_add_installment_clicked)
+        inst_btn_row.addWidget(add_inst_btn)
+        inst_btn_row.addStretch()
+        card_layout.addLayout(inst_btn_row)
 
         # Summary Row (Paid vs Balance)
         summary_row = QHBoxLayout()
@@ -562,8 +630,9 @@ class StudentFormDialog(QDialog):
         net = self.net_fee_spin.value()
         running_due = net
         total_paid = 0.0
+        num_rows = self.inst_table.rowCount()
 
-        for r in range(10):
+        for r in range(num_rows):
             due_spin = self.inst_table.cellWidget(r, 1)
             paid_spin = self.inst_table.cellWidget(r, 2)
             paid_val = paid_spin.value() if paid_spin else 0.0
@@ -591,6 +660,98 @@ class StudentFormDialog(QDialog):
         self.total_paid_badge.setText(f"Total Paid: ₹{total_paid:,.2f}")
         self.balance_badge.setText(f"Balance Due: ₹{bal:,.2f}")
 
+    def _build_referral_section(self):
+        """Referral & Commission Section: Searchable student referrer, discount, and commission amount."""
+        card = QFrame()
+        card.setObjectName("card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(20, 18, 20, 18)
+        card_layout.setSpacing(14)
+
+        title = QLabel("🤝 Student Referral & Commission Details")
+        title.setObjectName("sectionTitle")
+        card_layout.addWidget(title)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(12)
+
+        # Row 0: Searchable Referred By Combobox
+        grid.addWidget(QLabel("Referred By Student:"), 0, 0)
+        
+        self.referrer_combo = QComboBox()
+        self.referrer_combo.setEditable(True)
+        self.referrer_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.referrer_combo.setMinimumWidth(320)
+        
+        # Populate all students from DB
+        self.referrer_combo.addItem("-- Direct Admission / No Referral --", None)
+        try:
+            all_students = StudentController.get_all_students(sort_by="Sort: Name (A-Z)")
+            for st in all_students:
+                # Do not allow student to refer themselves when editing
+                if self.is_edit and self.student and st.id == self.student.id:
+                    continue
+                display_text = f"{st.name} ({st.id_no} • {st.mobile_no})"
+                self.referrer_combo.addItem(display_text, st.id)
+        except Exception:
+            pass
+
+        # Configure autocomplete search
+        completer = QCompleter(self.referrer_combo.model(), self.referrer_combo)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.referrer_combo.setCompleter(completer)
+        self.referrer_combo.setToolTip("Type to search existing students from DB by Name, ID No., or Mobile number")
+        self.referrer_combo.currentIndexChanged.connect(self._on_referrer_changed)
+
+        ref_row = QHBoxLayout()
+        ref_row.addWidget(self.referrer_combo, 1)
+        
+        clear_ref_btn = QPushButton("✕ Clear")
+        clear_ref_btn.setAutoDefault(False)
+        clear_ref_btn.setDefault(False)
+        clear_ref_btn.setStyleSheet("padding: 4px 10px; font-size: 11px;")
+        clear_ref_btn.setToolTip("Reset to No Referral")
+        clear_ref_btn.clicked.connect(lambda: self.referrer_combo.setCurrentIndex(0))
+        ref_row.addWidget(clear_ref_btn)
+
+        grid.addLayout(ref_row, 0, 1, 1, 3)
+
+        # Row 1: Referral Discount & Referrer Commission
+        grid.addWidget(QLabel("Referral Discount (₹):"), 1, 0)
+        self.referral_discount_spin = QDoubleSpinBox()
+        self.referral_discount_spin.setRange(0, 10000000)
+        self.referral_discount_spin.setDecimals(2)
+        self.referral_discount_spin.setSingleStep(500)
+        self.referral_discount_spin.setToolTip("Discount granted to this applicant on account of the referral (Default: ₹4,000, manually editable)")
+        self.referral_discount_spin.valueChanged.connect(self._on_referral_discount_changed)
+        grid.addWidget(self.referral_discount_spin, 1, 1)
+
+        grid.addWidget(QLabel("Referrer Commission (₹):"), 1, 2)
+        self.referral_commission_spin = QDoubleSpinBox()
+        self.referral_commission_spin.setRange(0, 10000000)
+        self.referral_commission_spin.setDecimals(2)
+        self.referral_commission_spin.setSingleStep(500)
+        self.referral_commission_spin.setToolTip("Commission amount recorded for the student who referred this admission")
+        grid.addWidget(self.referral_commission_spin, 1, 3)
+
+        card_layout.addLayout(grid)
+        self.content_layout.addWidget(card)
+
+    def _on_referrer_changed(self, idx: int):
+        """When a referrer student is selected, auto-apply the default ₹4,000 referral discount (manually changeable)."""
+        ref_id = self.referrer_combo.itemData(idx)
+        if ref_id:
+            if self.referral_discount_spin.value() == 0.0:
+                self.referral_discount_spin.setValue(4000.0)
+                if self.discount_spin.value() < 4000.0:
+                    self.discount_spin.setValue(4000.0)
+
+    def _on_referral_discount_changed(self, val: float):
+        """Automatically updates total discount if referral discount is greater than current discount."""
+        if val > 0 and self.discount_spin.value() < val:
+            self.discount_spin.setValue(val)
 
     def _build_custom_fields_section(self):
         """Dynamic Custom Fields section configured by the institute."""
@@ -649,6 +810,7 @@ class StudentFormDialog(QDialog):
         self.mother_name_input.setText(s.mother_name or "")
         if s.dob:
             self.dob_input.setDate(QDate(s.dob.year, s.dob.month, s.dob.day))
+        self.aadhar_input.setText(s.aadhar_no or "")
         self.father_occ_input.setText(s.father_occupation or "")
         self.college_input.setText(s.college_school or "")
         self.year_sem_input.setText(s.year_sem or "")
@@ -698,9 +860,16 @@ class StudentFormDialog(QDialog):
 
         # Installments
         installments = s.fee_installments or []
+        max_needed = max(10, len(installments))
+        while self.inst_table.rowCount() < max_needed:
+            new_r = self.inst_table.rowCount()
+            self.inst_table.insertRow(new_r)
+            self._create_installment_row(new_r)
+        self._update_inst_table_height()
+
         for inst in installments:
             r = inst.installment_no - 1
-            if 0 <= r < 10:
+            if 0 <= r < self.inst_table.rowCount():
                 due_spin = self.inst_table.cellWidget(r, 1)
                 paid_spin = self.inst_table.cellWidget(r, 2)
                 date_edit = self.inst_table.cellWidget(r, 3)
@@ -720,6 +889,18 @@ class StudentFormDialog(QDialog):
 
         self._recalc_installments_summary()
 
+        # Referral Data
+        if s.referred_by_student_id:
+            for i in range(self.referrer_combo.count()):
+                if self.referrer_combo.itemData(i) == s.referred_by_student_id:
+                    self.referrer_combo.setCurrentIndex(i)
+                    break
+        else:
+            self.referrer_combo.setCurrentIndex(0)
+
+        self.referral_discount_spin.setValue(s.referral_discount or 0.0)
+        self.referral_commission_spin.setValue(s.referral_commission or 0.0)
+
         # Custom Fields
         custom_vals = StudentController.get_student_custom_values(s.id)
         self.dynamic_widget.set_values(custom_vals)
@@ -734,6 +915,19 @@ class StudentFormDialog(QDialog):
             QMessageBox.warning(self, "Validation Error", "Please provide a valid ID No.")
             self.id_input.setFocus()
             return
+
+        # Check for duplicate ID in database
+        with get_db_session() as session:
+            existing_st = session.query(Student).filter(Student.id_no == id_no).first()
+            if existing_st:
+                if not self.is_edit or existing_st.id != self.student.id:
+                    QMessageBox.warning(
+                        self,
+                        "Duplicate ID Number",
+                        f"The ID No. '{id_no}' is already assigned to student '{existing_st.name}'.\nPlease enter a unique ID No."
+                    )
+                    self.id_input.setFocus()
+                    return
 
         if not name:
             QMessageBox.warning(self, "Validation Error", "Please enter the Student's Full Name.")
@@ -759,10 +953,10 @@ class StudentFormDialog(QDialog):
 
         course_sessions_data = []
 
-        # Collect 10 Installments Data
+        # Collect Installments Data
         fee_installments_data = []
-        ordinal_labels = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"]
-        for r in range(10):
+        for r in range(self.inst_table.rowCount()):
+            lbl = self._get_ordinal_label(r)
             due_spin = self.inst_table.cellWidget(r, 1)
             paid_spin = self.inst_table.cellWidget(r, 2)
             date_edit = self.inst_table.cellWidget(r, 3)
@@ -778,7 +972,7 @@ class StudentFormDialog(QDialog):
 
             fee_installments_data.append({
                 "installment_no": r + 1,
-                "installment_label": ordinal_labels[r],
+                "installment_label": lbl,
                 "due_amount": due_amt,
                 "paid_amount": paid_amt,
                 "due_date": pay_dt,
@@ -788,27 +982,42 @@ class StudentFormDialog(QDialog):
                 "remarks": remarks_input.text().strip() if remarks_input else None,
             })
 
-        total_fee_val = self.total_fee_spin.value()
-        discount_val = self.discount_spin.value()
-        net_fee_val = self.net_fee_spin.value()
-
-        # If user left total fee as 0, calculate effective total from installments
-        if total_fee_val <= 0:
-            first_due = fee_installments_data[0]["due_amount"] if fee_installments_data else 0.0
-            sum_paid = sum(inst["paid_amount"] for inst in fee_installments_data)
-            if first_due > 0:
-                total_fee_val = first_due
-                net_fee_val = max(0.0, total_fee_val - discount_val)
-            elif sum_paid > 0:
-                total_fee_val = sum_paid
-                net_fee_val = max(0.0, total_fee_val - discount_val)
-
         # Format Course Name
         course_text = self.course_combo.currentText().strip()
         if course_text.startswith("--"):
             course_name_val = None
         else:
             course_name_val = course_text.split(" (₹")[0].strip() or None
+
+        total_fee_val = self.total_fee_spin.value()
+        discount_val = self.discount_spin.value()
+        net_fee_val = self.net_fee_spin.value()
+
+        # If user left total fee as 0, calculate effective total from course standard fee or installments
+        if total_fee_val <= 0:
+            if course_name_val:
+                try:
+                    from app.modules.courses.controllers import CourseController
+                    c_obj = CourseController.get_course_by_name(course_name_val)
+                    if c_obj and c_obj.standard_fee > 0:
+                        total_fee_val = float(c_obj.standard_fee)
+                        net_fee_val = max(0.0, total_fee_val - discount_val)
+                except Exception:
+                    pass
+
+            if total_fee_val <= 0:
+                first_due = fee_installments_data[0]["due_amount"] if fee_installments_data else 0.0
+                sum_paid = sum(inst["paid_amount"] for inst in fee_installments_data)
+                if first_due > 0:
+                    total_fee_val = first_due
+                    net_fee_val = max(0.0, total_fee_val - discount_val)
+                elif sum_paid > 0:
+                    total_fee_val = sum_paid
+                    net_fee_val = max(0.0, total_fee_val - discount_val)
+
+        if total_fee_val > 0 and net_fee_val > 0 and discount_val == 0.0 and total_fee_val > net_fee_val:
+            discount_val = total_fee_val - net_fee_val
+
 
         student_data = {
             "id_no": id_no,
@@ -839,6 +1048,9 @@ class StudentFormDialog(QDialog):
             "discount_amount": discount_val,
             "net_fee": net_fee_val,
             "fee_remarks": self.fee_remarks_input.text().strip() or None,
+            "referred_by_student_id": self.referrer_combo.currentData(),
+            "referral_discount": self.referral_discount_spin.value(),
+            "referral_commission": self.referral_commission_spin.value(),
             "assigned_staff_id": self.staff_combo.currentData(),
         }
 

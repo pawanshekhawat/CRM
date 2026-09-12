@@ -47,11 +47,29 @@ class Student(Base, TimestampMixin):
     net_fee = Column(Float, default=0.0) # Total - Discount
     fee_remarks = Column(Text, nullable=True) # Fee Remarks
 
+    # Referral Tracking & Commission
+    referred_by_student_id = Column(String(36), ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
+    referral_discount = Column(Float, default=0.0) # Discount granted to this student due to referral
+    referral_commission = Column(Float, default=0.0) # Commission earned by the referrer for this admission
+
     # Faculty / Staff Assignment
     assigned_staff_id = Column(String(36), ForeignKey("staff.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Relationships
     assigned_staff = relationship("Staff", back_populates="assigned_students")
+
+    # Self-referential relationship for student referrals
+    referred_by = relationship(
+        "Student",
+        remote_side="Student.id",
+        foreign_keys=[referred_by_student_id],
+        back_populates="referrals",
+    )
+    referrals = relationship(
+        "Student",
+        foreign_keys=[referred_by_student_id],
+        back_populates="referred_by",
+    )
 
     batch_enrollments = relationship(
         "BatchStudent",
@@ -78,6 +96,21 @@ class Student(Base, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="StudentFeeInstallment.installment_no",
     )
+
+    @property
+    def referrals_count(self) -> int:
+        """Count of students referred by this student."""
+        return len(self.referrals or [])
+
+    @property
+    def total_referral_commission_earned(self) -> float:
+        """Total commission earned by this student from all referrals."""
+        return sum((r.referral_commission or 0.0) for r in (self.referrals or []))
+
+    @property
+    def total_referral_discounts_given(self) -> float:
+        """Total referral discounts granted across all referred students."""
+        return sum((r.referral_discount or 0.0) for r in (self.referrals or []))
 
     @property
     def total_paid(self) -> float:

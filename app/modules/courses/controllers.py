@@ -129,7 +129,23 @@ DEFAULT_COURSES_CATALOG = [
         "standard_fee": 7500.0,
         "description": "Basic computer operations, keyboard typing skills, MS Word formatting, Excel basics, PowerPoint presentations, and safe browsing.",
     },
+    {
+        "course_code": "CRS-CAD-17",
+        "name": "AutoCAD",
+        "category": "Architecture & Civil",
+        "standard_fee": 20000.0,
+        "description": "Professional 2D drafting, geometric layouts, layers, dimensioning, isometric drawings, 3D modeling, and plotting.",
+    },
+    {
+        "course_code": "CRS-FED-18",
+        "name": "Frontend Development",
+        "category": "IT & Programming",
+        "standard_fee": 35000.0,
+        "description": "HTML5, CSS3, Modern JavaScript (ES6+), React.js, Tailwind CSS, Responsive Design, State Management, and Frontend API Integrations.",
+    },
 ]
+
+
 
 
 class CourseController:

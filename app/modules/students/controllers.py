@@ -31,6 +31,8 @@ class StudentController:
                 joinedload(Student.assigned_staff),
                 joinedload(Student.batches),
                 joinedload(Student.batch_enrollments).joinedload(BatchStudent.batch),
+                joinedload(Student.referred_by),
+                joinedload(Student.referrals),
             )
 
             if status_filter and status_filter != "All" and status_filter != "All Status":
@@ -109,6 +111,8 @@ class StudentController:
                     joinedload(Student.assigned_staff),
                     joinedload(Student.batches),
                     joinedload(Student.batch_enrollments).joinedload(BatchStudent.batch),
+                    joinedload(Student.referred_by),
+                    joinedload(Student.referrals),
                 )
                 .filter(Student.id == student_id)
                 .first()
@@ -118,13 +122,44 @@ class StudentController:
             return student
 
     @staticmethod
+    def get_student_referrals(student_id: str) -> List[Student]:
+        """Fetch all students who were referred by a specific student."""
+        with get_db_session() as session:
+            referrals = (
+                session.query(Student)
+                .options(
+                    joinedload(Student.fee_installments),
+                    joinedload(Student.referred_by),
+                )
+                .filter(Student.referred_by_student_id == student_id)
+                .order_by(Student.admission_date.desc(), Student.name.asc())
+                .all()
+            )
+            session.expunge_all()
+            return referrals
+
+    @staticmethod
     def generate_next_id_no() -> str:
-        """Auto-generate next sequential Student ID No (e.g. CD-2026-0001)."""
+        """Auto-generate next sequential, non-colliding Student ID No (e.g. CD-2026-0060)."""
         current_year = datetime.now().year
         prefix = f"CD-{current_year}-"
         with get_db_session() as session:
-            count = session.query(func.count(Student.id)).filter(Student.id_no.like(f"{prefix}%")).scalar() or 0
-            return f"{prefix}{count + 1:04d}"
+            existing_ids = session.query(Student.id_no).filter(Student.id_no.like(f"{prefix}%")).all()
+            max_num = 0
+            existing_set = set()
+            for (id_str,) in existing_ids:
+                if id_str:
+                    existing_set.add(id_str.strip())
+                    suffix = id_str.replace(prefix, "").strip()
+                    if suffix.isdigit():
+                        max_num = max(max_num, int(suffix))
+
+            next_num = max_num + 1
+            candidate = f"{prefix}{next_num:04d}"
+            while candidate in existing_set:
+                next_num += 1
+                candidate = f"{prefix}{next_num:04d}"
+            return candidate
 
     @staticmethod
     def save_photo_attachment(source_path: str) -> str:
@@ -162,7 +197,35 @@ class StudentController:
         fee_installments_data = fee_installments_data or []
         custom_values = custom_values or {}
         with get_db_session() as session:
-            # Create core Student
+            course_name = data.get("course_name")
+            total_fee = float(data.get("total_fee") or 0.0)
+            discount_amount = float(data.get("discount_amount") or 0.0)
+            net_fee = float(data.get("net_fee") or 0.0)
+
+            # Auto-default to standard course fee if total_fee not explicitly provided
+            if total_fee <= 0 and course_name:
+                from app.models.course import Course
+                c_obj = session.query(Course).filter(Course.name.ilike(course_name.strip())).first()
+                if not c_obj and course_name.lower().startswith("master"):
+                    c_obj = session.query(Course).filter(Course.name.ilike("Master Architecture")).first()
+                if c_obj and c_obj.standard_fee > 0:
+                    total_fee = float(c_obj.standard_fee)
+
+            # If total_fee is not set but net_fee is, total_fee = net_fee + discount_amount
+            if total_fee <= 0 and net_fee > 0:
+                total_fee = net_fee + discount_amount
+            elif total_fee > 0 and net_fee <= 0:
+                net_fee = max(0.0, total_fee - discount_amount)
+            elif total_fee <= 0 and net_fee <= 0:
+                # Fallback to installment sums if provided
+                sum_inst = sum(float(inst.get("paid_amount") or 0.0) for inst in fee_installments_data)
+                if fee_installments_data and float(fee_installments_data[0].get("due_amount") or 0.0) > 0:
+                    total_fee = float(fee_installments_data[0].get("due_amount"))
+                elif sum_inst > 0:
+                    total_fee = sum_inst
+                net_fee = max(0.0, total_fee - discount_amount)
+
+
             student = Student(
                 id_no=data.get("id_no") or StudentController.generate_next_id_no(),
                 is_online=data.get("is_online", False),
@@ -189,14 +252,19 @@ class StudentController:
                 status=data.get("status", "Active"),
                 admission_date=data.get("admission_date") or date.today(),
                 declaration_agreed=data.get("declaration_agreed", True),
-                total_fee=float(data.get("total_fee") or 0.0),
-                discount_amount=float(data.get("discount_amount") or 0.0),
-                net_fee=float(data.get("net_fee") or 0.0),
+                total_fee=total_fee,
+                discount_amount=discount_amount,
+                net_fee=net_fee,
                 fee_remarks=data.get("fee_remarks"),
+                referred_by_student_id=data.get("referred_by_student_id"),
+                referral_discount=float(data.get("referral_discount") or 0.0),
+                referral_commission=float(data.get("referral_commission") or 0.0),
                 assigned_staff_id=data.get("assigned_staff_id"),
             )
+
             session.add(student)
             session.flush() # Populate student.id
+
 
             # Add Course Sessions
             for idx, cs in enumerate(course_sessions_data, start=1):
@@ -288,10 +356,24 @@ class StudentController:
                 "year_sem", "aadhar_no", "mobile_no", "email", "father_contact_no",
                 "alternate_contact_no", "permanent_address", "district", "state", "pin_code",
                 "status", "admission_date", "declaration_agreed", "total_fee", "discount_amount",
-                "net_fee", "fee_remarks", "assigned_staff_id"
+                "net_fee", "fee_remarks", "referred_by_student_id", "referral_discount", "referral_commission",
+                "assigned_staff_id"
             ]:
                 if key in data:
                     setattr(student, key, data[key])
+
+            # Ensure net_fee and total_fee consistency
+            if "total_fee" in data or "discount_amount" in data or "net_fee" in data:
+                t_fee = float(student.total_fee or 0.0)
+                d_amt = float(student.discount_amount or 0.0)
+                n_fee = float(student.net_fee or 0.0)
+                if t_fee <= 0 and n_fee > 0:
+                    student.total_fee = n_fee + d_amt
+                elif t_fee > 0 and n_fee <= 0:
+                    student.net_fee = max(0.0, t_fee - d_amt)
+                elif t_fee > 0 and n_fee > 0 and d_amt > 0:
+                    student.net_fee = max(0.0, t_fee - d_amt)
+
 
             # Replace Course Sessions only if explicitly provided
             if course_sessions_data is not None:

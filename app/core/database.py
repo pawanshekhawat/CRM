@@ -65,6 +65,12 @@ def init_db():
                 conn.exec_driver_sql("ALTER TABLE students ADD COLUMN assigned_staff_id VARCHAR(36) REFERENCES staff(id) ON DELETE SET NULL")
             if existing_cols and "admission_form_path" not in existing_cols:
                 conn.exec_driver_sql("ALTER TABLE students ADD COLUMN admission_form_path VARCHAR(255)")
+            if existing_cols and "referred_by_student_id" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE students ADD COLUMN referred_by_student_id VARCHAR(36) REFERENCES students(id) ON DELETE SET NULL")
+            if existing_cols and "referral_discount" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE students ADD COLUMN referral_discount FLOAT DEFAULT 0.0")
+            if existing_cols and "referral_commission" not in existing_cols:
+                conn.exec_driver_sql("ALTER TABLE students ADD COLUMN referral_commission FLOAT DEFAULT 0.0")
     except Exception as e:
         logger.warning(f"Schema migration note: {e}")
 

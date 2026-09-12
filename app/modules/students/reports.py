@@ -139,6 +139,7 @@ class ReportGenerator:
             [Paragraph("Father's Contact:", label_style), Paragraph(student.father_contact_no or "", value_style), Paragraph("Alt. Contact:", label_style), Paragraph(student.alternate_contact_no or "", value_style)],
             [Paragraph("Permanent Address:", label_style), Paragraph(f"{student.permanent_address or ''}", value_style), Paragraph("District/State/PIN:", label_style), Paragraph(f"{student.district or ''}, {student.state or ''} - {student.pin_code or ''}", value_style)],
             [Paragraph("Enrolled Course:", label_style), Paragraph(f"<b>{student.course_name or 'N/A'}</b>", value_style), Paragraph("Status:", label_style), Paragraph(f"<b>{student.status}</b>", value_style)],
+            [Paragraph("Referred By:", label_style), Paragraph(f"{student.referred_by.name} ({student.referred_by.id_no})" if student.referred_by else "Direct / None", value_style), Paragraph("Referral Disc:", label_style), Paragraph(f"Rs. {student.referral_discount:,.2f}" if student.referral_discount else "Rs. 0.00", value_style)],
         ]
         personal_table = Table(personal_data, colWidths=[110, 150, 110, 150])
         personal_table.setStyle(TableStyle([
@@ -248,7 +249,9 @@ class ReportGenerator:
             "Course", "Year/Sem", "Aadhar No", "College/School",
             "District", "State", "PIN", "Status", "Admission Date",
             "Total Fee (Rs.)", "Discount (Rs.)", "Net Fee (Rs.)",
-            "Total Paid (Rs.)", "Balance Due (Rs.)", "Fee Status"
+            "Total Paid (Rs.)", "Balance Due (Rs.)", "Fee Status",
+            "Referred By", "Referral Disc (Rs.)", "Referral Comm (Rs.)",
+            "Referrals Count", "Total Comm Earned (Rs.)"
         ]
         ws.append(headers)
 
@@ -263,6 +266,7 @@ class ReportGenerator:
 
         # Append student rows
         for s in students:
+            ref_by_text = f"{s.referred_by.name} ({s.referred_by.id_no})" if s.referred_by else "Direct / None"
             row = [
                 s.id_no,
                 s.name,
@@ -284,6 +288,11 @@ class ReportGenerator:
                 s.total_paid,
                 s.balance_due,
                 s.fee_status,
+                ref_by_text,
+                s.referral_discount or 0.0,
+                s.referral_commission or 0.0,
+                s.referrals_count,
+                s.total_referral_commission_earned,
             ]
             ws.append(row)
 

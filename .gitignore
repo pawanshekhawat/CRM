@@ -23,6 +23,8 @@ data/
 logs/
 *.log
 *.tmp
+backups/
+*.zip
 
 # Environment & Secrets
 .env

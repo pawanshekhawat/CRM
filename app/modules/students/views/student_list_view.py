@@ -136,11 +136,12 @@ class StatusBadgeComboBox(QComboBox):
                 color: {color};
                 border: 1px solid {border};
                 border-radius: 14px;
-                padding-left: 14px;
-                padding-right: 26px;
+                padding: 0px 24px 0px 14px;
+                margin: 0px;
                 font-size: 12px;
                 font-weight: 700;
                 min-height: 26px;
+                max-height: 28px;
             }}
             QComboBox:hover {{
                 border: 1px solid {color};
@@ -398,7 +399,7 @@ class StudentListView(QWidget):
             fee_status_widget = QWidget()
             fee_status_widget.setStyleSheet("background: transparent;")
             f_layout = QHBoxLayout(fee_status_widget)
-            f_layout.setContentsMargins(6, 4, 6, 4)
+            f_layout.setContentsMargins(0, 0, 0, 0)
             f_layout.setAlignment(Qt.AlignCenter)
 
             fee_status = s.fee_status
@@ -434,7 +435,7 @@ class StudentListView(QWidget):
             status_widget = QWidget()
             status_widget.setStyleSheet("background: transparent;")
             st_layout = QHBoxLayout(status_widget)
-            st_layout.setContentsMargins(6, 4, 6, 4)
+            st_layout.setContentsMargins(0, 0, 0, 0)
             st_layout.setAlignment(Qt.AlignCenter)
 
             status_combo = StatusBadgeComboBox(
@@ -450,7 +451,7 @@ class StudentListView(QWidget):
             act_widget = QWidget()
             act_widget.setStyleSheet("background: transparent;")
             act_layout = QHBoxLayout(act_widget)
-            act_layout.setContentsMargins(6, 4, 6, 4)
+            act_layout.setContentsMargins(0, 0, 0, 0)
             act_layout.setSpacing(8)
             act_layout.setAlignment(Qt.AlignCenter)
 

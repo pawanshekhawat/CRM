@@ -183,6 +183,18 @@ class StudentDetailView(QDialog):
             except Exception:
                 pass
 
+        # Safely resolve referrer details
+        referred_by_str = "Direct Admission / None"
+        try:
+            if s.referred_by:
+                referred_by_str = f"{s.referred_by.name} ({s.referred_by.id_no} • {s.referred_by.mobile_no})"
+            elif getattr(s, "referred_by_student_id", None):
+                ref_st = StudentController.get_student_by_id(s.referred_by_student_id)
+                if ref_st:
+                    referred_by_str = f"{ref_st.name} ({ref_st.id_no} • {ref_st.mobile_no})"
+        except Exception:
+            pass
+
         details = [
             ("Student Name", s.name),
             ("Father's Name", s.father_name or "N/A"),
@@ -202,6 +214,9 @@ class StudentDetailView(QDialog):
             ("Enrolled Batches", enrolled_batches_str),
             ("Admission Date", s.admission_date.strftime("%d/%m/%Y") if s.admission_date else "N/A"),
             ("Declaration Agreed", "Yes" if s.declaration_agreed else "No"),
+            ("Referred By", referred_by_str),
+            ("Referral Discount", f"₹{s.referral_discount:,.2f}" if (s.referral_discount and s.referral_discount > 0) else "None (₹0.00)"),
+            ("Referrer Commission", f"₹{s.referral_commission:,.2f}" if (s.referral_commission and s.referral_commission > 0) else "None (₹0.00)"),
         ]
 
         row = 0
@@ -330,6 +345,169 @@ class StudentDetailView(QDialog):
         c_layout.addStretch()
         tabs.addTab(custom_tab, "🧩 Custom Fields")
 
+        # Tab 5: Referrals & Commission
+        referrals = []
+        try:
+            referrals = StudentController.get_student_referrals(s.id)
+        except Exception:
+            pass
+
+        referrals_tab = QWidget()
+        ref_layout = QVBoxLayout(referrals_tab)
+        ref_layout.setContentsMargins(14, 14, 14, 14)
+        ref_layout.setSpacing(14)
+
+        # Top Stat KPI Cards
+        stat_row = QHBoxLayout()
+        stat_row.setSpacing(14)
+
+        total_ref_count = len(referrals)
+        total_comm_earned = sum((r.referral_commission or 0.0) for r in referrals)
+        total_disc_given = sum((r.referral_discount or 0.0) for r in referrals)
+
+        # 1. Total Referrals Card
+        card1 = QFrame()
+        card1.setStyleSheet("background-color: #101520; border: 1px solid #10B98144; border-radius: 10px; padding: 10px 14px;")
+        c1_lay = QVBoxLayout(card1)
+        c1_lay.setContentsMargins(0, 0, 0, 0)
+        c1_lay.setSpacing(2)
+        c1_val = QLabel(f"{total_ref_count}")
+        c1_val.setStyleSheet("font-size: 20px; font-weight: 700; color: #10B981;")
+        c1_lbl = QLabel("STUDENTS REFERRED")
+        c1_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #94A3B8;")
+        c1_lay.addWidget(c1_val)
+        c1_lay.addWidget(c1_lbl)
+        stat_row.addWidget(card1)
+
+        # 2. Total Commission Card
+        card2 = QFrame()
+        card2.setStyleSheet("background-color: #101520; border: 1px solid #3B82F644; border-radius: 10px; padding: 10px 14px;")
+        c2_lay = QVBoxLayout(card2)
+        c2_lay.setContentsMargins(0, 0, 0, 0)
+        c2_lay.setSpacing(2)
+        c2_val = QLabel(f"₹{total_comm_earned:,.2f}")
+        c2_val.setStyleSheet("font-size: 20px; font-weight: 700; color: #3B82F6;")
+        c2_lbl = QLabel("TOTAL COMMISSION EARNED")
+        c2_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #94A3B8;")
+        c2_lay.addWidget(c2_val)
+        c2_lay.addWidget(c2_lbl)
+        stat_row.addWidget(card2)
+
+        # 3. Total Referral Discounts Card
+        card3 = QFrame()
+        card3.setStyleSheet("background-color: #101520; border: 1px solid #F59E0B44; border-radius: 10px; padding: 10px 14px;")
+        c3_lay = QVBoxLayout(card3)
+        c3_lay.setContentsMargins(0, 0, 0, 0)
+        c3_lay.setSpacing(2)
+        c3_val = QLabel(f"₹{total_disc_given:,.2f}")
+        c3_val.setStyleSheet("font-size: 20px; font-weight: 700; color: #F59E0B;")
+        c3_lbl = QLabel("TOTAL DISCOUNTS GRANTED")
+        c3_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #94A3B8;")
+        c3_lay.addWidget(c3_val)
+        c3_lay.addWidget(c3_lbl)
+        stat_row.addWidget(card3)
+
+        ref_layout.addLayout(stat_row)
+
+        if referrals:
+            ref_table = QTableWidget(len(referrals), 8)
+            ref_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            ref_table.setFocusPolicy(Qt.NoFocus)
+            ref_table.setHorizontalHeaderLabels([
+                "ID No.", "Student Name", "Mobile No.", "Course Enrolled", "Admission Date", "Discount (₹)", "Commission (₹)", "Action"
+            ])
+            ref_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            ref_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            ref_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            ref_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeToContents)
+
+            for r_idx, ref_s in enumerate(referrals):
+                itm_id = QTableWidgetItem(ref_s.id_no)
+                itm_id.setTextAlignment(Qt.AlignCenter)
+                ref_table.setItem(r_idx, 0, itm_id)
+
+                itm_name = QTableWidgetItem(ref_s.name)
+                ref_table.setItem(r_idx, 1, itm_name)
+
+                itm_mob = QTableWidgetItem(ref_s.mobile_no)
+                itm_mob.setTextAlignment(Qt.AlignCenter)
+                ref_table.setItem(r_idx, 2, itm_mob)
+
+                itm_course = QTableWidgetItem(ref_s.course_name or "-")
+                ref_table.setItem(r_idx, 3, itm_course)
+
+                adm_str = ref_s.admission_date.strftime("%d/%m/%Y") if ref_s.admission_date else "-"
+                itm_date = QTableWidgetItem(adm_str)
+                itm_date.setTextAlignment(Qt.AlignCenter)
+                ref_table.setItem(r_idx, 4, itm_date)
+
+                disc_val = ref_s.referral_discount or 0.0
+                itm_disc = QTableWidgetItem(f"₹{disc_val:,.2f}")
+                itm_disc.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                ref_table.setItem(r_idx, 5, itm_disc)
+
+                comm_val = ref_s.referral_commission or 0.0
+                itm_comm = QTableWidgetItem(f"₹{comm_val:,.2f}")
+                itm_comm.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                ref_table.setItem(r_idx, 6, itm_comm)
+
+                # View Action Button
+                act_w = QWidget()
+                act_w.setStyleSheet("background: transparent;")
+                act_l = QHBoxLayout(act_w)
+                act_l.setContentsMargins(4, 2, 4, 2)
+                act_l.setAlignment(Qt.AlignCenter)
+                v_btn = QPushButton("👁️ View")
+                v_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2563EB;
+                        color: #FFFFFF;
+                        border: none;
+                        border-radius: 4px;
+                        padding: 3px 10px;
+                        font-size: 11px;
+                        font-weight: 600;
+                    }
+                    QPushButton:hover {
+                        background-color: #3B82F6;
+                    }
+                """)
+                v_btn.clicked.connect(lambda checked=False, sid=ref_s.id: self._open_referred_student(sid))
+                act_l.addWidget(v_btn)
+                ref_table.setCellWidget(r_idx, 7, act_w)
+
+            ref_table.doubleClicked.connect(lambda idx: self._open_referred_student(referrals[idx.row()].id))
+            ref_layout.addWidget(ref_table)
+        else:
+            empty_card = QFrame()
+            empty_card.setStyleSheet("background-color: #101520; border: 1.5px dashed #283347; border-radius: 12px; padding: 30px;")
+            empty_layout = QVBoxLayout(empty_card)
+            empty_layout.setAlignment(Qt.AlignCenter)
+            empty_layout.setSpacing(8)
+
+            icon_lbl = QLabel("🤝")
+            icon_lbl.setStyleSheet("font-size: 36px;")
+            icon_lbl.setAlignment(Qt.AlignCenter)
+            empty_layout.addWidget(icon_lbl)
+
+            msg_title = QLabel("No Referrals Recorded Yet")
+            msg_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #F1F5F9;")
+            msg_title.setAlignment(Qt.AlignCenter)
+            empty_layout.addWidget(msg_title)
+
+            msg_desc = QLabel(
+                f"When other students enroll and select {s.name} as 'Referred By',\n"
+                "their details, the ₹4,000 referral discount, and earned commissions will automatically appear here."
+            )
+            msg_desc.setStyleSheet("color: #94A3B8; font-size: 12px; line-height: 1.4;")
+            msg_desc.setAlignment(Qt.AlignCenter)
+            empty_layout.addWidget(msg_desc)
+
+            ref_layout.addWidget(empty_card)
+
+        ref_layout.addStretch()
+        tabs.addTab(referrals_tab, f"🤝 Referrals & Commission ({total_ref_count})")
+
         self.main_layout.addWidget(tabs)
 
         # Bottom Close / Delete Row
@@ -347,6 +525,16 @@ class StudentDetailView(QDialog):
         b_row.addWidget(close_btn)
 
         self.main_layout.addLayout(b_row)
+
+    def _open_referred_student(self, student_id: str):
+        dlg = StudentDetailView(student_id=student_id, parent=self)
+        dlg.student_updated.connect(self._on_child_student_updated)
+        dlg.exec()
+
+    def _on_child_student_updated(self):
+        self._load_student_data()
+        self._build_ui()
+        self.student_updated.emit()
 
     def _on_form_uploaded(self, rel_path: str):
         if self.student:

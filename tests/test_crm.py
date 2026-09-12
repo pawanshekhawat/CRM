@@ -272,23 +272,268 @@ def test_admission_form_viewer_and_status():
 
 
 def test_student_sorting_by_name_course_status():
-    # 1. Test Sort by Name A-Z
-    by_name_asc = StudentController.get_all_students(sort_by="Sort: Name (A-Z)")
-    names_asc = [s.name.lower() for s in by_name_asc]
-    assert names_asc == sorted(names_asc)
+    # Ensure test students exist
+    s1 = StudentController.create_student({
+        "id_no": "CD-SORT-A",
+        "name": "Abhishek Verma",
+        "mobile_no": "9111111111",
+        "course_name": "AutoCAD",
+        "status": "Active",
+        "total_fee": 10000.0,
+        "net_fee": 10000.0,
+    })
+    s2 = StudentController.create_student({
+        "id_no": "CD-SORT-B",
+        "name": "Zoya Khan",
+        "mobile_no": "9222222222",
+        "course_name": "Revit Architecture",
+        "status": "Completed",
+        "total_fee": 20000.0,
+        "net_fee": 20000.0,
+    })
+    try:
+        # 1. Test Sort by Name A-Z
+        by_name_asc = StudentController.get_all_students(sort_by="Sort: Name (A-Z)")
+        names_asc = [s.name.lower() for s in by_name_asc]
+        assert names_asc == sorted(names_asc)
 
-    # 2. Test Sort by Name Z-A
-    by_name_desc = StudentController.get_all_students(sort_by="Sort: Name (Z-A)")
-    names_desc = [s.name.lower() for s in by_name_desc]
-    assert names_desc == sorted(names_desc, reverse=True)
+        # 2. Test Sort by Name Z-A
+        by_name_desc = StudentController.get_all_students(sort_by="Sort: Name (Z-A)")
+        names_desc = [s.name.lower() for s in by_name_desc]
+        assert names_desc == sorted(names_desc, reverse=True)
 
-    # 3. Test Sort by Course
-    by_course = StudentController.get_all_students(sort_by="Sort: Courses")
-    courses = [s.course_name or "" for s in by_course]
-    assert courses == sorted(courses)
+        # 3. Test Sort by Course
+        by_course = StudentController.get_all_students(sort_by="Sort: Courses")
+        courses = [s.course_name or "" for s in by_course]
+        assert courses == sorted(courses)
 
-    # 4. Test Sort by Active Status (Active first)
-    by_status = StudentController.get_all_students(sort_by="Sort: Active Status")
-    status_order_map = {"Active": 1, "Completed": 2, "Dropout": 3}
-    status_ranks = [status_order_map.get(s.status, 4) for s in by_status]
-    assert status_ranks == sorted(status_ranks)
+        # 4. Test Sort by Active Status (Active first)
+        by_status = StudentController.get_all_students(sort_by="Sort: Active Status")
+        status_order_map = {"Active": 1, "Completed": 2, "Dropout": 3}
+        status_ranks = [status_order_map.get(s.status, 4) for s in by_status]
+        assert status_ranks == sorted(status_ranks)
+    finally:
+        StudentController.delete_student(s1.id)
+        StudentController.delete_student(s2.id)
+
+
+def test_student_form_dialog_populate_aadhar_and_fields():
+    from PySide6.QtWidgets import QApplication
+    from app.modules.students.views.student_form_dialog import StudentFormDialog
+    import sys
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    student = StudentController.create_student({
+        "id_no": "CD-TEST-DLG",
+        "name": "Dialog Test Student",
+        "aadhar_no": "999988887777",
+        "mobile_no": "9333333333",
+        "course_name": "Civil 3D",
+        "status": "Active",
+        "total_fee": 15000.0,
+        "net_fee": 15000.0,
+    })
+    try:
+        dlg = StudentFormDialog(student=student)
+        assert dlg.id_input.text() == student.id_no
+        assert dlg.name_input.text() == student.name
+        if student.aadhar_no:
+            assert dlg.aadhar_input.text() == student.aadhar_no
+    finally:
+        StudentController.delete_student(student.id)
+
+
+def test_student_form_dialog_auto_default_and_dynamic_installments():
+    from PySide6.QtWidgets import QApplication, QPushButton
+    from app.modules.students.views.student_form_dialog import StudentFormDialog
+    import sys
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    dlg = StudentFormDialog()
+
+    # 1. Verify all QPushButtons have autoDefault disabled (so Enter in inputs doesn't trigger photo upload)
+    all_buttons = dlg.findChildren(QPushButton)
+    assert len(all_buttons) > 0
+    for btn in all_buttons:
+        assert btn.autoDefault() is False, f"Button '{btn.text()}' has autoDefault=True, should be False!"
+        assert btn.isDefault() is False, f"Button '{btn.text()}' has isDefault=True, should be False!"
+
+    # 2. Verify initial 10 installment rows
+    assert dlg.inst_table.rowCount() == 10
+    assert dlg.inst_table.item(0, 0).text().strip() == "1st"
+    assert dlg.inst_table.item(9, 0).text().strip() == "10th"
+
+    # 3. Test dynamic addition of 11th and 12th installment rows
+    dlg._on_add_installment_clicked()
+    assert dlg.inst_table.rowCount() == 11
+    assert dlg.inst_table.item(10, 0).text().strip() == "11th"
+
+    dlg._on_add_installment_clicked()
+    assert dlg.inst_table.rowCount() == 12
+    assert dlg.inst_table.item(11, 0).text().strip() == "12th"
+
+    # 4. Test ordinal label generator helper
+    assert dlg._get_ordinal_label(0) == "1st"
+    assert dlg._get_ordinal_label(1) == "2nd"
+    assert dlg._get_ordinal_label(2) == "3rd"
+    assert dlg._get_ordinal_label(10) == "11th"
+    assert dlg._get_ordinal_label(20) == "21st"
+    assert dlg._get_ordinal_label(21) == "22nd"
+    assert dlg._get_ordinal_label(22) == "23rd"
+    assert dlg._get_ordinal_label(23) == "24th"
+
+    # 5. Test dynamic summary calculation with new rows
+    dlg.net_fee_spin.setValue(100000.0)
+    # Put 10,000 in row 10 (11th installment)
+    paid_spin_11 = dlg.inst_table.cellWidget(10, 2)
+    paid_spin_11.setValue(10000.0)
+    assert "₹10,000.00" in dlg.total_paid_badge.text()
+    assert "₹90,000.00" in dlg.balance_badge.text()
+
+
+def test_status_badge_combo_box_style_and_dimensions():
+    from PySide6.QtWidgets import QApplication
+    from app.modules.students.views.student_list_view import StatusBadgeComboBox
+    import sys
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    combo = StatusBadgeComboBox(student_id="test_id", current_status="Active", on_change_callback=None)
+    assert combo.height() == 28 or combo.maximumHeight() == 28
+    sheet = combo.styleSheet()
+    assert "padding: 0px 24px 0px 14px;" in sheet
+    assert "margin: 0px;" in sheet
+    assert "border-radius: 14px;" in sheet
+
+
+def test_student_referral_lifecycle_and_commission():
+    from PySide6.QtWidgets import QApplication
+    from app.modules.students.views.student_form_dialog import StudentFormDialog
+    from app.modules.students.views.student_detail_view import StudentDetailView
+    import sys
+    import uuid
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    uid = uuid.uuid4().hex[:6]
+    id_ref = f"CD-REF-A-{uid}"
+    id_stud_b = f"CD-REF-B-{uid}"
+    id_stud_c = f"CD-REF-C-{uid}"
+
+    # 1. Create Referrer Student A
+    student_a = StudentController.create_student({
+        "id_no": id_ref,
+        "name": "Referrer Student A",
+        "mobile_no": "9811110001",
+        "course_name": "Full Stack Development",
+        "status": "Active",
+        "total_fee": 50000.0,
+        "discount_amount": 0.0,
+        "net_fee": 50000.0,
+    })
+    assert student_a is not None
+
+    try:
+        # 2. Create Referred Student B (with 4000 discount and 2500 commission)
+        student_b = StudentController.create_student({
+            "id_no": id_stud_b,
+            "name": "Referred Student B",
+            "mobile_no": "9811110002",
+            "course_name": "Master Architecture",
+            "status": "Active",
+            "total_fee": 80000.0,
+            "discount_amount": 4000.0,
+            "net_fee": 76000.0,
+            "referred_by_student_id": student_a.id,
+            "referral_discount": 4000.0,
+            "referral_commission": 2500.0,
+        })
+        assert student_b is not None
+        assert student_b.referred_by_student_id == student_a.id
+
+        # 3. Create Referred Student C (with 5000 discount and 3000 commission)
+        student_c = StudentController.create_student({
+            "id_no": id_stud_c,
+            "name": "Referred Student C",
+            "mobile_no": "9811110003",
+            "course_name": "AutoCAD Mechanical",
+            "status": "Active",
+            "total_fee": 40000.0,
+            "discount_amount": 5000.0,
+            "net_fee": 35000.0,
+            "referred_by_student_id": student_a.id,
+            "referral_discount": 5000.0,
+            "referral_commission": 3000.0,
+        })
+        assert student_c is not None
+
+        # 4. Fetch Referrer A and verify metrics & relationships
+        refetched_a = StudentController.get_student_by_id(student_a.id)
+        assert refetched_a.referrals_count == 2
+        assert refetched_a.total_referral_commission_earned == 5500.0
+        assert refetched_a.total_referral_discounts_given == 9000.0
+
+        # Verify get_student_referrals query
+        referrals_list = StudentController.get_student_referrals(student_a.id)
+        assert len(referrals_list) == 2
+        ref_ids = {r.id for r in referrals_list}
+        assert student_b.id in ref_ids
+        assert student_c.id in ref_ids
+
+        # 5. Test StudentFormDialog auto-apply discount on referrer selection
+        form_dlg = StudentFormDialog()
+        # Find index for student A in combo
+        idx_a = -1
+        for i in range(form_dlg.referrer_combo.count()):
+            if form_dlg.referrer_combo.itemData(i) == student_a.id:
+                idx_a = i
+                break
+        assert idx_a > 0
+        form_dlg.referrer_combo.setCurrentIndex(idx_a)
+        # Should auto-populate default 4000 referral discount
+        assert form_dlg.referral_discount_spin.value() == 4000.0
+        assert form_dlg.discount_spin.value() >= 4000.0
+
+        # 6. Test StudentDetailView with Referrals tab
+        detail_view = StudentDetailView(student_id=student_a.id)
+        assert detail_view.student.referrals_count == 2
+        # Tab title should contain "(2)"
+        tab_widget = detail_view.findChild(type(detail_view.main_layout.itemAt(1).widget()))
+        tab_titles = [tab_widget.tabText(i) for i in range(tab_widget.count())] if tab_widget else []
+        assert any("Referrals & Commission (2)" in t for t in tab_titles)
+
+    finally:
+        StudentController.delete_student(student_b.id)
+        StudentController.delete_student(student_c.id)
+        StudentController.delete_student(student_a.id)
+
+
+def test_student_authentic_fee_preservation():
+    """Verify that student total_fee and net_fee accurately preserve form amounts."""
+    # 1. Create student with authentic AutoCAD course fee 14500
+    student = StudentController.create_student({
+        "id_no": "CD-FEE-TEST-01",
+        "name": "Fee Test Student",
+        "mobile_no": "9000000001",
+        "course_name": "AutoCAD",
+        "total_fee": 14500.0,
+        "discount_amount": 0.0,
+        "net_fee": 14500.0,
+    })
+    try:
+        assert student.course_name == "AutoCAD"
+        assert student.total_fee == 14500.0
+        assert student.discount_amount == 0.0
+        assert student.net_fee == 14500.0
+
+        # 2. Update student to Master Architecture with authentic fee 25000
+        updated = StudentController.update_student(
+            student.id,
+            data={"course_name": "Master Architecture", "total_fee": 25000.0, "discount_amount": 0.0, "net_fee": 25000.0}
+        )
+        assert updated.course_name == "Master Architecture"
+        assert updated.total_fee == 25000.0
+        assert updated.discount_amount == 0.0
+        assert updated.net_fee == 25000.0
+    finally:
+        StudentController.delete_student(student.id)
+
+
