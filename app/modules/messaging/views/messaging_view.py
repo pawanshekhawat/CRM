@@ -1,3 +1,4 @@
+import html
 from typing import Dict, List, Optional
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
@@ -5,7 +6,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -29,11 +29,10 @@ from app.modules.messaging.views.dispatch_queue_dialog import DispatchQueueDialo
 from app.modules.messaging.views.template_editor_dialog import TemplateEditorDialog
 from app.modules.students.controllers import StudentController
 from app.ui.widgets.search_bar import SearchBar
-from app.ui.widgets.stat_card import StatCard
 
 
 class MessagingView(QWidget):
-    """Main UI for WhatsApp message automation, template management, and bulk student dispatch."""
+    """Refined and modern UI for WhatsApp message automation, template management, and bulk student dispatch."""
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -52,55 +51,68 @@ class MessagingView(QWidget):
 
     def _build_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(18, 16, 18, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(16, 14, 16, 14)
+        main_layout.setSpacing(10)
 
-        # 1. Top Header Card & Stats
+        # 1. Top Header & KPI Summary Bar
         header_card = QFrame()
         header_card.setObjectName("card")
+        header_card.setStyleSheet("""
+            QFrame#card {
+                background-color: #131823;
+                border: 1px solid #1F293D;
+                border-radius: 10px;
+                padding: 4px;
+            }
+        """)
         h_layout = QHBoxLayout(header_card)
-        h_layout.setContentsMargins(16, 12, 16, 12)
-        h_layout.setSpacing(14)
+        h_layout.setContentsMargins(14, 10, 14, 10)
+        h_layout.setSpacing(12)
 
         h_info = QVBoxLayout()
         h_info.setSpacing(2)
-        title_lbl = QLabel("📢 Message Automation & WhatsApp Workflows")
-        title_lbl.setObjectName("headerTitle")
-        title_lbl.setStyleSheet("font-size: 17px; font-weight: 800; color: #F8FAFC;")
+        title_lbl = QLabel("💬 WhatsApp Automation & Message Workflows")
+        title_lbl.setStyleSheet("font-size: 16px; font-weight: 800; color: #F8FAFC;")
         h_info.addWidget(title_lbl)
 
-        sub_lbl = QLabel("Select student cohorts, compose personalized templates with Spintax, and dispatch via WhatsApp.")
-        sub_lbl.setStyleSheet("font-size: 11px; color: #94A3B8;")
+        sub_lbl = QLabel("Select students, compose personalized templates with smart tags & Spintax, and dispatch via WhatsApp.")
+        sub_lbl.setStyleSheet("font-size: 11.5px; color: #94A3B8;")
         h_info.addWidget(sub_lbl)
         h_layout.addLayout(h_info, 3)
 
-        # Stat Badges
+        # KPI Badges
         self.stat_total_lbl = QLabel("Total Students: <b>0</b>")
-        self.stat_total_lbl.setStyleSheet("background-color: #1E293B; border: 1px solid #334155; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; color: #E2E8F0;")
+        self.stat_total_lbl.setStyleSheet("background-color: #1E293B; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; color: #E2E8F0;")
         h_layout.addWidget(self.stat_total_lbl)
 
         self.stat_pending_lbl = QLabel("Pending Fees: <b>0</b>")
-        self.stat_pending_lbl.setStyleSheet("background-color: #EF444418; border: 1px solid #EF444455; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; color: #F87171;")
+        self.stat_pending_lbl.setStyleSheet("background-color: #EF444418; border: 1px solid #EF444455; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; color: #F87171; font-weight: 600;")
         h_layout.addWidget(self.stat_pending_lbl)
 
         self.stat_selected_lbl = QLabel("Selected: <b>0</b>")
-        self.stat_selected_lbl.setStyleSheet("background-color: #10B98118; border: 1px solid #10B98155; border-radius: 8px; padding: 6px 12px; font-size: 11.5px; color: #34D399; font-weight: 700;")
+        self.stat_selected_lbl.setStyleSheet("background-color: #10B98118; border: 1px solid #10B98155; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; color: #34D399; font-weight: 700;")
         h_layout.addWidget(self.stat_selected_lbl)
 
         main_layout.addWidget(header_card)
 
         # 2. Main Two-Column Splitter
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setStyleSheet("""
+            QSplitter::handle {
+                background-color: #1F293D;
+                width: 2px;
+            }
+        """)
 
         # Left Column: Student Selection Table & Filters
         left_widget = self._build_left_panel()
         splitter.addWidget(left_widget)
 
-        # Right Column: Template Selector, Composer & Live Preview
+        # Right Column: Template Selector, Composer & Live WhatsApp Preview
         right_widget = self._build_right_panel()
         splitter.addWidget(right_widget)
 
-        splitter.setSizes([620, 500])
+        splitter.setSizes([600, 520])
         main_layout.addWidget(splitter, 1)
 
     def _build_left_panel(self) -> QWidget:
@@ -114,70 +126,162 @@ class MessagingView(QWidget):
         filter_bar = QHBoxLayout()
         filter_bar.setSpacing(8)
 
-        self.search_bar = SearchBar(placeholder="Search Name, Mobile, Course, ID...")
+        self.search_bar = SearchBar(placeholder="Search by Name, Mobile, Course, ID...")
         self.search_bar.searched.connect(lambda s: self._apply_filters())
         filter_bar.addWidget(self.search_bar, 3)
 
         self.course_filter = QComboBox()
         self.course_filter.addItem("All Courses")
-        self.course_filter.setMinimumWidth(130)
+        self.course_filter.setMinimumWidth(125)
         self.course_filter.currentTextChanged.connect(self._apply_filters)
         filter_bar.addWidget(self.course_filter, 2)
 
         self.fee_filter = QComboBox()
         self.fee_filter.addItems(["All Fees", "Pending / Partial", "Fully Paid", "No Fee"])
-        self.fee_filter.setMinimumWidth(125)
+        self.fee_filter.setMinimumWidth(120)
         self.fee_filter.currentTextChanged.connect(self._apply_filters)
         filter_bar.addWidget(self.fee_filter, 2)
 
         refresh_btn = QPushButton("🔄 Refresh")
         refresh_btn.setToolTip("Reload latest students and payments from database")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                color: #CBD5E1;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #F8FAFC;
+                border-color: #475569;
+            }
+        """)
         refresh_btn.clicked.connect(self.refresh_data)
         filter_bar.addWidget(refresh_btn)
 
         layout.addLayout(filter_bar)
 
-        # Quick Batch Selection Buttons
+        # Quick Batch Selection Toolbar
         quick_select_row = QHBoxLayout()
         quick_select_row.setSpacing(6)
 
-        btn_select_all = QPushButton("☑️ Select All")
-        btn_select_all.setStyleSheet("background-color: #1E293B; color: #F1F5F9; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 11px;")
-        btn_select_all.clicked.connect(self._select_all_visible)
-        quick_select_row.addWidget(btn_select_all)
+        self.btn_select_all = QPushButton("☑️ Select All")
+        self.btn_select_all.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                color: #F1F5F9;
+                border: 1px solid #334155;
+                border-radius: 5px;
+                padding: 4px 10px;
+                font-size: 11.5px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                border-color: #475569;
+            }
+        """)
+        self.btn_select_all.clicked.connect(self._select_all_visible)
+        quick_select_row.addWidget(self.btn_select_all)
 
-        btn_select_pending = QPushButton("🎯 Select Pending Fees Only")
-        btn_select_pending.setStyleSheet("background-color: #7C2D12; color: #FED7AA; border: 1px solid #9A3412; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: 600;")
-        btn_select_pending.clicked.connect(self._select_pending_fees_only)
-        quick_select_row.addWidget(btn_select_pending)
+        self.btn_select_pending = QPushButton("🎯 Select Pending Fees (0)")
+        self.btn_select_pending.setStyleSheet("""
+            QPushButton {
+                background-color: #7C2D122A;
+                color: #FED7AA;
+                border: 1px solid #9A3412;
+                border-radius: 5px;
+                padding: 4px 10px;
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #7C2D1255;
+                border-color: #EA580C;
+                color: #FFFFFF;
+            }
+        """)
+        self.btn_select_pending.clicked.connect(self._select_pending_fees_only)
+        quick_select_row.addWidget(self.btn_select_pending)
 
-        btn_deselect = QPushButton("⬜ Deselect All")
-        btn_deselect.setStyleSheet("background-color: #1E293B; color: #94A3B8; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 11px;")
-        btn_deselect.clicked.connect(self._deselect_all)
-        quick_select_row.addWidget(btn_deselect)
+        self.btn_deselect = QPushButton("✕ Clear Selection")
+        self.btn_deselect.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #94A3B8;
+                border: 1px solid #334155;
+                border-radius: 5px;
+                padding: 4px 10px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1E293B;
+                color: #E2E8F0;
+                border-color: #475569;
+            }
+        """)
+        self.btn_deselect.clicked.connect(self._deselect_all)
+        quick_select_row.addWidget(self.btn_deselect)
 
         quick_select_row.addStretch()
+
+        self.table_count_lbl = QLabel("0 students")
+        self.table_count_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
+        quick_select_row.addWidget(self.table_count_lbl)
+
         layout.addLayout(quick_select_row)
 
         # Student Selection Table
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels([
-            "Select", "Student Name & ID", "Mobile", "Course", "Balance Due", "Last Fee Paid"
+            "✓", "Student Name & ID", "Mobile", "Course", "Balance Due", "Last Fee Paid"
         ])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                background-color: #0F131C;
+                gridline-color: #1A2130;
+                border: 1px solid #1F293D;
+                border-radius: 6px;
+                font-size: 12px;
+            }
+            QTableWidget::item {
+                padding: 4px 6px;
+                border-bottom: 1px solid #161C28;
+            }
+            QTableWidget::item:selected {
+                background-color: #1E293B;
+                color: #FFFFFF;
+            }
+            QHeaderView::section {
+                background-color: #161C28;
+                color: #94A3B8;
+                font-weight: 700;
+                font-size: 11px;
+                padding: 6px 4px;
+                border: none;
+                border-bottom: 1px solid #283347;
+            }
+        """)
 
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.Fixed)
-        self.table.setColumnWidth(0, 48)
+        self.table.setColumnWidth(0, 52)
         h.setSectionResizeMode(1, QHeaderView.Stretch)
-        h.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        h.setSectionResizeMode(2, QHeaderView.Fixed)
+        self.table.setColumnWidth(2, 115)
         h.setSectionResizeMode(3, QHeaderView.Stretch)
-        h.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        h.setSectionResizeMode(4, QHeaderView.Fixed)
+        self.table.setColumnWidth(4, 105)
         h.setSectionResizeMode(5, QHeaderView.Fixed)
-        self.table.setColumnWidth(5, 140)
+        self.table.setColumnWidth(5, 165)
 
         self.table.itemSelectionChanged.connect(self._on_table_row_selected)
         layout.addWidget(self.table, 1)
@@ -191,104 +295,196 @@ class MessagingView(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        # Saved Templates Row
-        tmpl_header = QHBoxLayout()
+        # 1. Saved Templates Header Toolbar
+        tmpl_card = QFrame()
+        tmpl_card.setStyleSheet("background-color: #161C28; border: 1px solid #222C3D; border-radius: 8px; padding: 6px 8px;")
+        tmpl_header = QHBoxLayout(tmpl_card)
+        tmpl_header.setContentsMargins(4, 2, 4, 2)
         tmpl_header.setSpacing(8)
 
-        t_lbl = QLabel("<b>📁 Saved Template:</b>")
+        t_lbl = QLabel("<b>📁 Template:</b>")
         t_lbl.setStyleSheet("font-size: 12px; color: #F8FAFC;")
         tmpl_header.addWidget(t_lbl)
 
         self.template_combo = QComboBox()
         self.template_combo.currentIndexChanged.connect(self._on_template_selected)
+        self.template_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #0F131C;
+                border: 1px solid #283347;
+                border-radius: 6px;
+                padding: 4px 10px;
+                color: #F8FAFC;
+                font-size: 12px;
+            }
+        """)
         tmpl_header.addWidget(self.template_combo, 1)
 
         new_tmpl_btn = QPushButton("+ New")
         new_tmpl_btn.setToolTip("Create a new reusable template")
+        new_tmpl_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                color: #38BDF8;
+                border: 1px solid #0284C7;
+                border-radius: 5px;
+                padding: 4px 10px;
+                font-size: 11.5px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #0284C7;
+                color: #FFFFFF;
+            }
+        """)
         new_tmpl_btn.clicked.connect(self._create_new_template)
         tmpl_header.addWidget(new_tmpl_btn)
 
         edit_tmpl_btn = QPushButton("✏️ Edit")
         edit_tmpl_btn.setToolTip("Edit the currently selected template")
+        edit_tmpl_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                color: #CBD5E1;
+                border: 1px solid #334155;
+                border-radius: 5px;
+                padding: 4px 10px;
+                font-size: 11.5px;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #FFFFFF;
+            }
+        """)
         edit_tmpl_btn.clicked.connect(self._edit_current_template)
         tmpl_header.addWidget(edit_tmpl_btn)
 
         del_tmpl_btn = QPushButton("🗑️")
         del_tmpl_btn.setToolTip("Delete currently selected template")
+        del_tmpl_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                color: #F87171;
+                border: 1px solid #EF444455;
+                border-radius: 5px;
+                padding: 4px 8px;
+                font-size: 11.5px;
+            }
+            QPushButton:hover {
+                background-color: #7F1D1D;
+                color: #FFFFFF;
+            }
+        """)
         del_tmpl_btn.clicked.connect(self._delete_current_template)
         tmpl_header.addWidget(del_tmpl_btn)
 
-        layout.addLayout(tmpl_header)
+        layout.addWidget(tmpl_card)
 
-        # Merge Tags Quick Buttons
-        tags_card = QFrame()
-        tags_card.setStyleSheet("background-color: #12151D; border: 1px dashed #334155; border-radius: 6px; padding: 6px;")
-        tags_layout = QVBoxLayout(tags_card)
-        tags_layout.setSpacing(4)
-        tags_layout.setContentsMargins(4, 4, 4, 4)
+        # 2. Dynamic Merge Tags Pill Toolbar
+        tags_bar = QHBoxLayout()
+        tags_bar.setSpacing(4)
 
-        t_hint = QLabel("<b>Click Tag to Insert into Template:</b>")
-        t_hint.setStyleSheet("font-size: 10.5px; color: #38BDF8;")
-        tags_layout.addWidget(t_hint)
+        t_hint = QLabel("💡 <b>Insert:</b>")
+        t_hint.setStyleSheet("font-size: 11px; color: #38BDF8;")
+        tags_bar.addWidget(t_hint)
 
-        tags_row = QHBoxLayout()
-        tags_row.setSpacing(4)
-        quick_tags = ["{name}", "{course}", "{balance_due}", "{last_paid_date}", "{days_ago}", "{id_no}"]
-        for q_tag in quick_tags:
+        quick_tags = [
+            ("{name}", "Name"),
+            ("{course}", "Course"),
+            ("{balance_due}", "Balance"),
+            ("{last_paid_date}", "Payment Date"),
+            ("{days_ago}", "Days Ago"),
+            ("{id_no}", "Roll No"),
+            ("{Dear|Hello}", "Spintax"),
+        ]
+        for q_tag, hint in quick_tags:
             btn = QPushButton(q_tag)
+            btn.setToolTip(f"Click to insert tag for {hint}")
+            btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #1E293B;
+                    background-color: #182234;
                     color: #38BDF8;
-                    border: 1px solid #0284C7;
+                    border: 1px solid #0284C755;
                     border-radius: 4px;
-                    padding: 2px 6px;
-                    font-size: 10.5px;
+                    padding: 2px 7px;
+                    font-size: 11px;
                     font-weight: 600;
                 }
                 QPushButton:hover {
                     background-color: #0284C7;
                     color: #FFFFFF;
+                    border-color: #0284C7;
                 }
             """)
             btn.clicked.connect(lambda checked=False, t=q_tag: self._insert_tag_to_composer(t))
-            tags_row.addWidget(btn)
-        tags_row.addStretch()
-        tags_layout.addLayout(tags_row)
+            tags_bar.addWidget(btn)
+        tags_bar.addStretch()
+        layout.addLayout(tags_bar)
 
-        layout.addWidget(tags_card)
-
-        # Message Composer Box
-        layout.addWidget(QLabel("<b>Message Content / Workflow Script:</b>"))
+        # 3. Message Composer Text Area
         self.composer_edit = QTextEdit()
-        self.composer_edit.setPlaceholderText("Write your WhatsApp message template with {name}, {course}, {balance_due} and Spintax {Dear|Hello}...")
-        self.composer_edit.setMinimumHeight(110)
-        self.composer_edit.setStyleSheet("background-color: #0F172A; border: 1px solid #283042; border-radius: 6px; padding: 8px; font-size: 12px; font-family: 'Consolas', 'Segoe UI', monospace;")
+        self.composer_edit.setPlaceholderText("Write your WhatsApp message template here using {name}, {course}, {balance_due} and Spintax variations...")
+        self.composer_edit.setMinimumHeight(95)
+        self.composer_edit.setMaximumHeight(130)
+        self.composer_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: #0C1018;
+                border: 1px solid #1F293D;
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 12.5px;
+                font-family: 'Consolas', 'Segoe UI', monospace;
+                color: #F8FAFC;
+                line-height: 1.4;
+            }
+            QTextEdit:focus {
+                border: 1px solid #0284C7;
+                background-color: #0F1420;
+            }
+        """)
         self.composer_edit.textChanged.connect(self._update_live_preview)
         layout.addWidget(self.composer_edit)
 
-        # Live Rendered Preview Card
+        # 4. WhatsApp Live Chat Preview Box
         prev_header = QHBoxLayout()
-        prev_header.addWidget(QLabel("<b>👁️ Live Preview for Highlighted Student:</b>"))
+        prev_title = QLabel("<b>💬 Live WhatsApp Preview:</b>")
+        prev_title.setStyleSheet("font-size: 12px; color: #E2E8F0;")
+        prev_header.addWidget(prev_title)
+
+        self.preview_student_lbl = QLabel("")
+        self.preview_student_lbl.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 600;")
+        prev_header.addWidget(self.preview_student_lbl)
+
+        prev_header.addStretch()
+
         self.char_count_lbl = QLabel("0 chars")
         self.char_count_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
-        prev_header.addStretch()
         prev_header.addWidget(self.char_count_lbl)
         layout.addLayout(prev_header)
 
+        # Live WhatsApp Chat View
         self.preview_box = QTextEdit()
         self.preview_box.setReadOnly(True)
-        self.preview_box.setMinimumHeight(95)
-        self.preview_box.setStyleSheet("background-color: #0B0F19; border: 1px solid #1E293B; border-radius: 6px; padding: 8px; font-size: 12px; color: #34D399;")
-        layout.addWidget(self.preview_box)
+        self.preview_box.setMinimumHeight(120)
+        self.preview_box.setStyleSheet("""
+            QTextEdit {
+                background-color: #0B141A;
+                border: 1px solid #1F293D;
+                border-radius: 8px;
+                padding: 6px;
+            }
+        """)
+        layout.addWidget(self.preview_box, 1)
 
-        # Action Buttons Bottom
+        # 5. Bottom Action Buttons
         act_box = QVBoxLayout()
         act_box.setSpacing(6)
 
         # Primary Bulk Dispatch Button
         self.start_dispatch_btn = QPushButton("⚡ Start WhatsApp Batch Dispatch (0 Selected)")
         self.start_dispatch_btn.setObjectName("primaryBtn")
+        self.start_dispatch_btn.setCursor(Qt.PointingHandCursor)
         self.start_dispatch_btn.setStyleSheet("""
             QPushButton {
                 background-color: #059669;
@@ -303,13 +499,33 @@ class MessagingView(QWidget):
                 background-color: #10B981;
                 border-color: #059669;
             }
+            QPushButton:disabled {
+                background-color: #1E293B;
+                color: #64748B;
+                border-color: #334155;
+            }
         """)
         self.start_dispatch_btn.clicked.connect(self._on_start_batch_dispatch)
         act_box.addWidget(self.start_dispatch_btn)
 
         # Single Student 1-Click Send Button
         self.single_send_btn = QPushButton("💬 Open WhatsApp for Highlighted Student (1-Click)")
-        self.single_send_btn.setStyleSheet("background-color: #2563EB; color: #FFFFFF; border: 1px solid #1D4ED8; border-radius: 6px; padding: 7px 12px; font-weight: 600; font-size: 11.5px;")
+        self.single_send_btn.setCursor(Qt.PointingHandCursor)
+        self.single_send_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E293B;
+                color: #38BDF8;
+                border: 1px solid #0284C7;
+                border-radius: 6px;
+                padding: 7px 12px;
+                font-weight: 600;
+                font-size: 11.5px;
+            }
+            QPushButton:hover {
+                background-color: #0284C7;
+                color: #FFFFFF;
+            }
+        """)
         self.single_send_btn.clicked.connect(self._on_single_send_clicked)
         act_box.addWidget(self.single_send_btn)
 
@@ -341,7 +557,7 @@ class MessagingView(QWidget):
             self.template_combo.addItem(f"[{tmpl.category}] {tmpl.title}", tmpl.id)
         self.template_combo.blockSignals(False)
 
-        # Load first template into composer
+        # Load first template into composer if empty
         if self.templates and not self.composer_edit.toPlainText().strip():
             self.composer_edit.setPlainText(self.templates[0].content or "")
 
@@ -391,19 +607,51 @@ class MessagingView(QWidget):
 
     def _populate_table(self):
         self.table.setRowCount(0)
+        self.table_count_lbl.setText(f"Showing {len(self.filtered_students)} of {len(self.all_students)} students")
+
+        pending_in_filtered = sum(1 for s in self.filtered_students if s.balance_due > 0)
+        self.btn_select_pending.setText(f"🎯 Select Pending Fees ({pending_in_filtered})")
+        self.btn_select_all.setText(f"☑️ Select All ({len(self.filtered_students)})")
 
         for row_idx, s in enumerate(self.filtered_students):
             self.table.insertRow(row_idx)
             self.table.setRowHeight(row_idx, 46)
 
-            # 0. Checkbox
-            chk = QCheckBox()
-            chk.setStyleSheet("margin-left: 14px;")
-            chk.setChecked(s.id in self.selected_student_ids)
-            chk.toggled.connect(lambda checked, sid=s.id: self._on_student_toggled(sid, checked))
-            self.table.setCellWidget(row_idx, 0, chk)
+            # 0. Centered Checkbox Cell Widget
+            chk_container = QWidget()
+            chk_container.setStyleSheet("background: transparent;")
+            chk_layout = QHBoxLayout(chk_container)
+            chk_layout.setContentsMargins(0, 0, 0, 0)
+            chk_layout.setAlignment(Qt.AlignCenter)
 
-            # 1. Student Name & ID
+            chk = QCheckBox()
+            chk.setCursor(Qt.PointingHandCursor)
+            chk.setChecked(s.id in self.selected_student_ids)
+            chk.setStyleSheet("""
+                QCheckBox {
+                    background: transparent;
+                }
+                QCheckBox::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 4px;
+                    border: 1.5px solid #475569;
+                    background-color: #1E293B;
+                }
+                QCheckBox::indicator:hover {
+                    border-color: #10B981;
+                    background-color: #334155;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #10B981;
+                    border-color: #10B981;
+                }
+            """)
+            chk.toggled.connect(lambda checked, sid=s.id: self._on_student_toggled(sid, checked))
+            chk_layout.addWidget(chk)
+            self.table.setCellWidget(row_idx, 0, chk_container)
+
+            # 1. Student Name & ID (2-Line Widget)
             name_widget = QWidget()
             name_widget.setStyleSheet("background: transparent;")
             n_layout = QVBoxLayout(name_widget)
@@ -421,12 +669,13 @@ class MessagingView(QWidget):
             self.table.setCellWidget(row_idx, 1, name_widget)
 
             # 2. Mobile Number
-            mob_item = QTableWidgetItem(s.mobile_no)
+            mob_item = QTableWidgetItem(s.mobile_no or "-")
             mob_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row_idx, 2, mob_item)
 
             # 3. Course
             c_item = QTableWidgetItem(s.course_name or "-")
+            c_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self.table.setItem(row_idx, 3, c_item)
 
             # 4. Balance Due
@@ -436,16 +685,20 @@ class MessagingView(QWidget):
             bal_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if bal > 0:
                 bal_item.setForeground(Qt.red)
+            else:
+                bal_item.setForeground(Qt.darkGreen)
             self.table.setItem(row_idx, 4, bal_item)
 
             # 5. Last Fee Paid
             last_pay_str = s.last_payment_summary
             lp_item = QTableWidgetItem(last_pay_str)
             lp_item.setTextAlignment(Qt.AlignCenter)
+            if "No Payment" in last_pay_str:
+                lp_item.setForeground(Qt.gray)
             self.table.setItem(row_idx, 5, lp_item)
 
         if self.filtered_students:
-            if not self.highlighted_student:
+            if not self.highlighted_student or self.highlighted_student not in self.filtered_students:
                 self.highlighted_student = self.filtered_students[0]
             self.table.selectRow(0)
             self._update_live_preview()
@@ -460,7 +713,7 @@ class MessagingView(QWidget):
     def _select_all_visible(self):
         for s in self.filtered_students:
             self.selected_student_ids.add(s.id)
-        self._populate_table()
+        self._sync_table_checkboxes()
         self._update_selected_count_ui()
 
     def _select_pending_fees_only(self):
@@ -468,13 +721,23 @@ class MessagingView(QWidget):
         for s in self.filtered_students:
             if s.balance_due > 0:
                 self.selected_student_ids.add(s.id)
-        self._populate_table()
+        self._sync_table_checkboxes()
         self._update_selected_count_ui()
 
     def _deselect_all(self):
         self.selected_student_ids.clear()
-        self._populate_table()
+        self._sync_table_checkboxes()
         self._update_selected_count_ui()
+
+    def _sync_table_checkboxes(self):
+        for row_idx, s in enumerate(self.filtered_students):
+            cell_widget = self.table.cellWidget(row_idx, 0)
+            if cell_widget:
+                chk = cell_widget.findChild(QCheckBox)
+                if chk:
+                    chk.blockSignals(True)
+                    chk.setChecked(s.id in self.selected_student_ids)
+                    chk.blockSignals(False)
 
     def _on_table_row_selected(self):
         rows = self.table.selectionModel().selectedRows()
@@ -512,12 +775,39 @@ class MessagingView(QWidget):
         self.char_count_lbl.setText(f"{len(template_text)} chars")
 
         if not self.highlighted_student:
-            self.preview_box.setPlainText("Select a student on the left to see live personalized preview.")
+            self.preview_student_lbl.setText("")
+            self.preview_box.setHtml(
+                "<div style='color: #64748B; font-style: italic; padding: 24px; text-align: center; font-size: 12px;'>"
+                "Select a student from the directory on the left to see live personalized message preview.</div>"
+            )
+            self.single_send_btn.setText("💬 Open WhatsApp for Highlighted Student (1-Click)")
             return
 
-        rendered = MessageController.render_message(template_text, self.highlighted_student, randomize_spintax=False)
-        self.preview_box.setPlainText(rendered)
-        self.single_send_btn.setText(f"💬 Open WhatsApp for {self.highlighted_student.name} (1-Click)")
+        s = self.highlighted_student
+        self.preview_student_lbl.setText(f"👤 {s.name} (+91 {s.mobile_no})")
+        self.single_send_btn.setText(f"💬 Open WhatsApp for {s.name} (1-Click Direct)")
+
+        if not template_text:
+            self.preview_box.setHtml(
+                "<div style='color: #64748B; font-style: italic; padding: 24px; text-align: center; font-size: 12px;'>"
+                "Type a message or select a saved template above to see the WhatsApp preview.</div>"
+            )
+            return
+
+        rendered = MessageController.render_message(template_text, s, randomize_spintax=False)
+        escaped_text = html.escape(rendered).replace('\n', '<br>')
+
+        chat_html = f"""
+        <div style="background-color: #0B141A; padding: 10px 14px; border-radius: 8px; font-family: -apple-system, 'Segoe UI', sans-serif;">
+            <div style="background-color: #005C4B; color: #E9EDEF; padding: 10px 14px; border-radius: 8px; border-top-right-radius: 2px; font-size: 12.5px; line-height: 1.45; word-wrap: break-word;">
+                <div>{escaped_text}</div>
+                <div style="text-align: right; font-size: 10px; color: #8696A0; margin-top: 5px;">
+                    12:45 PM &nbsp;<span style="color: #53BDEB; font-weight: bold;">✓✓</span>
+                </div>
+            </div>
+        </div>
+        """
+        self.preview_box.setHtml(chat_html)
 
     def _create_new_template(self):
         dlg = TemplateEditorDialog(parent=self)
@@ -553,12 +843,13 @@ class MessagingView(QWidget):
             QMessageBox.warning(self, "No Student Selected", "Please select a student from the table.")
             return
 
-        msg = self.preview_box.toPlainText().strip()
-        if not msg:
+        template_text = self.composer_edit.toPlainText().strip()
+        if not template_text:
             QMessageBox.warning(self, "Empty Message", "Message content cannot be empty.")
             return
 
-        url = MessageController.build_whatsapp_url(self.highlighted_student.mobile_no, msg, use_desktop_app=True)
+        rendered_msg = MessageController.render_message(template_text, self.highlighted_student, randomize_spintax=True)
+        url = MessageController.build_whatsapp_url(self.highlighted_student.mobile_no, rendered_msg, use_desktop_app=True)
         QDesktopServices.openUrl(QUrl(url))
 
     def _on_start_batch_dispatch(self):
