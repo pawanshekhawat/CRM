@@ -507,7 +507,7 @@ class StudentDetailView(QDialog):
 
         ref_layout.addStretch()
         tabs.addTab(referrals_tab, f"🤝 Referrals & Commission ({total_ref_count})")
-
+        tabs.currentChanged.connect(lambda idx: self._on_tab_changed(idx))
         self.main_layout.addWidget(tabs)
 
         # Bottom Close / Delete Row
@@ -525,6 +525,14 @@ class StudentDetailView(QDialog):
         b_row.addWidget(close_btn)
 
         self.main_layout.addLayout(b_row)
+
+    def _on_tab_changed(self, tab_index: int):
+        # When switching to Admission Form tab (index 2)
+        if tab_index == 2 and hasattr(self, "form_viewer") and self.form_viewer:
+            from PySide6.QtCore import QTimer
+            self.form_viewer._fit_to_view()
+            QTimer.singleShot(50, self.form_viewer._fit_to_view)
+            QTimer.singleShot(150, self.form_viewer._fit_to_view)
 
     def _open_referred_student(self, student_id: str):
         dlg = StudentDetailView(student_id=student_id, parent=self)

@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap, QWheelEvent, QKeyEvent
+from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QTimer
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap, QWheelEvent, QKeyEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -23,6 +23,8 @@ from app.core.config import ADMISSION_FORMS_DIR, ROOT_DIR
 
 class InteractiveGraphicsView(QGraphicsView):
     """QGraphicsView with smooth mouse-wheel zooming and drag-panning."""
+
+    manual_zoom_triggered = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -54,6 +56,7 @@ class InteractiveGraphicsView(QGraphicsView):
             self._zoom_factor *= zoom
 
         self.scale(zoom, zoom)
+        self.manual_zoom_triggered.emit()
         event.accept()
 
     def reset_zoom(self):
@@ -69,6 +72,7 @@ class FullscreenFormDialog(QDialog):
         self.setWindowTitle(title)
         self.setWindowState(Qt.WindowFullScreen)
         self.setStyleSheet("background-color: #06080C;")
+        self._is_fit_mode = True
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -148,23 +152,43 @@ class FullscreenFormDialog(QDialog):
 
         self.view = InteractiveGraphicsView(self)
         self.view.setScene(self.scene)
+        self.view.manual_zoom_triggered.connect(self._on_manual_zoom)
         layout.addWidget(self.view)
 
-        self._fit_to_screen()
+        QTimer.singleShot(50, self._fit_to_screen)
+        QTimer.singleShot(150, self._fit_to_screen)
+
+    def _on_manual_zoom(self):
+        self._is_fit_mode = False
 
     def _zoom_in(self):
+        self._is_fit_mode = False
         self.view.scale(1.25, 1.25)
 
     def _zoom_out(self):
+        self._is_fit_mode = False
         self.view.scale(0.8, 0.8)
 
     def _actual_size(self):
+        self._is_fit_mode = False
         self.view.reset_zoom()
 
     def _fit_to_screen(self):
+        self._is_fit_mode = True
         self.view.resetTransform()
         if not self.pixmap_item.pixmap().isNull():
+            self.scene.setSceneRect(QRectF(self.pixmap_item.pixmap().rect()))
             self.view.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
+
+    def showEvent(self, event: QShowEvent):
+        super().showEvent(event)
+        if self._is_fit_mode:
+            QTimer.singleShot(50, self._fit_to_screen)
+
+    def resizeEvent(self, event: QResizeEvent):
+        super().resizeEvent(event)
+        if self._is_fit_mode:
+            self._fit_to_screen()
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_Escape:
@@ -174,7 +198,7 @@ class FullscreenFormDialog(QDialog):
 
 
 class FormImageViewer(QWidget):
-    """Reusable Admission Form Image Viewer Widget with Zoom, Pan, Fit, and Fullscreen."""
+    """Reusable Admission Form Image Viewer Widget with default Fit View, Zoom, Pan, and Fullscreen."""
 
     form_uploaded = Signal(str) # Emits relative path of saved image
 
@@ -183,6 +207,7 @@ class FormImageViewer(QWidget):
         self.student_name = student_name
         self.relative_path = relative_form_path
         self._current_pixmap: Optional[QPixmap] = None
+        self._is_fit_mode = True
 
         self._build_ui()
         if self.relative_path:
@@ -285,6 +310,7 @@ class FormImageViewer(QWidget):
 
         self.view = InteractiveGraphicsView(self)
         self.view.setScene(self.scene)
+        self.view.manual_zoom_triggered.connect(self._on_manual_zoom)
         self.main_layout.addWidget(self.view, stretch=1)
 
         # Empty State Placeholder Container
@@ -357,6 +383,8 @@ class FormImageViewer(QWidget):
         self.view.show()
         self.toolbar_card.show()
         self._fit_to_view()
+        QTimer.singleShot(50, self._fit_to_view)
+        QTimer.singleShot(150, self._fit_to_view)
 
     def _show_empty_state(self):
         self._current_pixmap = None
@@ -365,19 +393,38 @@ class FormImageViewer(QWidget):
         self.toolbar_card.hide()
         self.empty_card.show()
 
+    def _on_manual_zoom(self):
+        self._is_fit_mode = False
+
     def _zoom_in(self):
+        self._is_fit_mode = False
         self.view.scale(1.2, 1.2)
 
     def _zoom_out(self):
+        self._is_fit_mode = False
         self.view.scale(0.8, 0.8)
 
     def _actual_size(self):
+        self._is_fit_mode = False
         self.view.reset_zoom()
 
     def _fit_to_view(self):
+        self._is_fit_mode = True
         self.view.resetTransform()
         if self._current_pixmap and not self._current_pixmap.isNull():
+            self.scene.setSceneRect(QRectF(self._current_pixmap.rect()))
             self.view.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
+
+    def showEvent(self, event: QShowEvent):
+        super().showEvent(event)
+        if self._is_fit_mode:
+            self._fit_to_view()
+            QTimer.singleShot(50, self._fit_to_view)
+
+    def resizeEvent(self, event: QResizeEvent):
+        super().resizeEvent(event)
+        if self._is_fit_mode:
+            self._fit_to_view()
 
     def _open_fullscreen(self):
         if not self._current_pixmap or self._current_pixmap.isNull():

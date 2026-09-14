@@ -45,14 +45,7 @@ if not defined PY_CMD (
     )
 )
 
-if not defined PY_CMD (
-    echo.
-    echo [NOTICE] Required dependencies (PySide6) are not yet installed.
-    echo Launching automated requirement installer...
-    echo.
-    call "%~dp0setup_requirements.bat"
-    exit /b %errorlevel%
-)
+if not defined PY_CMD goto :DEPENDENCIES_MISSING
 
 %PY_CMD% "%~dp0app\main.py"
 
@@ -61,5 +54,14 @@ if %ERRORLEVEL% NEQ 0 (
     echo Application exited with an error. Check logs in %~dp0logs\crm.log
     pause
 )
+exit /b %ERRORLEVEL%
+
+:DEPENDENCIES_MISSING
+echo.
+echo [NOTICE] Required dependencies are not yet installed on this system.
+echo Launching automated requirement installer...
+echo.
+call "%~dp0setup_requirements.bat"
+exit /b %errorlevel%
 
 
