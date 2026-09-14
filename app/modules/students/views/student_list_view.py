@@ -209,6 +209,10 @@ class StudentListView(QWidget):
         # Load initial data
         self.refresh_data()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_data()
+
     def _build_stat_cards(self, parent_layout: QVBoxLayout):
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(12)

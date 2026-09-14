@@ -46,6 +46,10 @@ class MessagingView(QWidget):
         self._build_ui()
         self.refresh_data()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_data()
+
     def _build_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(18, 16, 18, 16)
@@ -125,6 +129,11 @@ class MessagingView(QWidget):
         self.fee_filter.setMinimumWidth(125)
         self.fee_filter.currentTextChanged.connect(self._apply_filters)
         filter_bar.addWidget(self.fee_filter, 2)
+
+        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn.setToolTip("Reload latest students and payments from database")
+        refresh_btn.clicked.connect(self.refresh_data)
+        filter_bar.addWidget(refresh_btn)
 
         layout.addLayout(filter_bar)
 

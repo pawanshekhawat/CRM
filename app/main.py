@@ -216,6 +216,13 @@ class MainWindow(QMainWindow):
     def _switch_module(self, index: int, module_name: str):
         self.stack.setCurrentIndex(index)
         self.page_title.setText(module_name)
+        widget = self.stack.widget(index)
+        if widget and hasattr(widget, "refresh_data"):
+            try:
+                widget.refresh_data()
+            except Exception as e:
+                logger.error(f"Error refreshing module '{module_name}': {e}")
+
 
     def closeEvent(self, event):
         """Clean shutdown handler."""
