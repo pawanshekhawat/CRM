@@ -8,6 +8,20 @@ from app.modules.students.reports import ReportGenerator
 @pytest.fixture(autouse=True)
 def setup_db():
     init_db()
+    # Clean before test
+    with get_db_session() as session:
+        from app.models.custom_fields import CustomFieldDefinition, CustomFieldValue
+        session.query(CustomFieldValue).delete()
+        session.query(CustomFieldDefinition).delete()
+        session.commit()
+    yield
+    # Clean after test
+    with get_db_session() as session:
+        from app.models.custom_fields import CustomFieldDefinition, CustomFieldValue
+        session.query(CustomFieldValue).delete()
+        session.query(CustomFieldDefinition).delete()
+        session.query(Student).filter(Student.id_no.like("CD-2026-TEST%")).delete()
+        session.commit()
 
 def test_student_crud_and_calculations():
     # 1. Test Custom Field Creation
