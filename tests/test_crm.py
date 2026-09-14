@@ -551,3 +551,82 @@ def test_student_authentic_fee_preservation():
         StudentController.delete_student(student.id)
 
 
+def test_last_fee_paid_calculation_and_table_column():
+    """Verify last fee paid date, days passed, sorting, and UI table column next to course enrolled."""
+    from datetime import date, timedelta
+    from PySide6.QtWidgets import QApplication
+    import sys
+    app = QApplication.instance() or QApplication(sys.argv)
+    from app.modules.students.views.student_list_view import StudentListView
+
+    d1 = date.today() - timedelta(days=40)
+    d2 = date.today() - timedelta(days=10)
+
+    # 1. Student with multiple paid installments
+    st_paid = StudentController.create_student(
+        data={
+            "id_no": "CD-2026-TEST-LP1",
+            "name": "Last Paid Test Student",
+            "mobile_no": "9998887771",
+            "course_name": "Land Survey",
+            "total_fee": 25000.0,
+            "net_fee": 25000.0,
+            "admission_date": d1,
+        },
+        fee_installments_data=[
+            {"installment_no": 1, "installment_label": "1st", "due_amount": 10000.0, "paid_amount": 10000.0, "payment_date": d1},
+            {"installment_no": 2, "installment_label": "2nd", "due_amount": 15000.0, "paid_amount": 15000.0, "payment_date": d2},
+        ],
+    )
+
+    # 2. Student with no paid installments
+    st_unpaid = StudentController.create_student(
+        data={
+            "id_no": "CD-2026-TEST-LP2",
+            "name": "Unpaid Test Student",
+            "mobile_no": "9998887772",
+            "course_name": "AutoCAD",
+            "total_fee": 15000.0,
+            "net_fee": 15000.0,
+            "admission_date": d1,
+        },
+        fee_installments_data=[
+            {"installment_no": 1, "installment_label": "1st", "due_amount": 15000.0, "paid_amount": 0.0},
+        ],
+    )
+
+    try:
+        # Check model properties
+        assert st_paid.latest_paid_installment is not None
+        assert st_paid.latest_paid_installment.installment_no == 2
+        assert st_paid.last_payment_date == d2
+        assert st_paid.days_since_last_payment == 10
+        assert "10d ago" in st_paid.last_payment_summary
+
+        assert st_unpaid.latest_paid_installment is None
+        assert st_unpaid.last_payment_date is None
+        assert st_unpaid.days_since_last_payment is None
+        assert st_unpaid.last_payment_summary == "No Payment"
+
+        # Check sorting by last paid
+        sorted_recent = StudentController.get_all_students(sort_by="Sort: Last Paid (Recent)")
+        assert len(sorted_recent) >= 2
+        # st_paid should appear before st_unpaid in recent paid sort
+        paid_idx = next(i for i, s in enumerate(sorted_recent) if s.id == st_paid.id)
+        unpaid_idx = next(i for i, s in enumerate(sorted_recent) if s.id == st_unpaid.id)
+        assert paid_idx < unpaid_idx
+
+        # Check UI table structure
+        list_view = StudentListView()
+        assert list_view.table.columnCount() == 7
+        assert list_view.table.horizontalHeaderItem(2).text() == "Course Enrolled"
+        assert list_view.table.horizontalHeaderItem(3).text() == "Last Fee Paid"
+        assert list_view.table.horizontalHeaderItem(4).text() == "Fee Status"
+
+        list_view.close()
+    finally:
+        StudentController.delete_student(st_paid.id)
+        StudentController.delete_student(st_unpaid.id)
+
+
+

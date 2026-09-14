@@ -95,6 +95,17 @@ class StudentController:
                 elif fee_filter == "No Fee":
                     students = [s for s in students if s.fee_status == "No Fee"]
 
+            # Post-query sorting for calculated fee / payment fields
+            if sort_by:
+                s_lower = sort_by.lower()
+                from datetime import date
+                if "last paid (recent)" in s_lower or "paid (recent)" in s_lower:
+                    students.sort(key=lambda s: s.last_payment_date or date.min, reverse=True)
+                elif "last paid (oldest)" in s_lower or "paid (oldest)" in s_lower:
+                    students.sort(key=lambda s: s.last_payment_date or date.max)
+                elif "fee (pending)" in s_lower or "pending" in s_lower and "sort" in s_lower:
+                    students.sort(key=lambda s: (s.balance_due, s.total_paid), reverse=True)
+
             # Expunge objects so they can be accessed outside session
             session.expunge_all()
             return students

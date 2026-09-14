@@ -98,7 +98,7 @@ class StudentDetailView(QDialog):
         name_lbl.setObjectName("headerTitle")
         info_col.addWidget(name_lbl)
 
-        sub_info = QLabel(f"<b>ID No:</b> {s.id_no} &nbsp;|&nbsp; <b>Course:</b> {s.course_name or 'N/A'} &nbsp;|&nbsp; <b>Mobile:</b> {s.mobile_no}")
+        sub_info = QLabel(f"<b>ID No:</b> {s.id_no} &nbsp;|&nbsp; <b>Course:</b> {s.course_name or 'N/A'} &nbsp;|&nbsp; <b>Mobile:</b> {s.mobile_no} &nbsp;|&nbsp; <b>Last Paid:</b> {s.last_payment_summary}")
         sub_info.setStyleSheet("color: #94A3B8; font-size: 13px;")
         info_col.addWidget(sub_info)
 
@@ -250,6 +250,8 @@ class StudentDetailView(QDialog):
         f_sum_row.addWidget(QLabel(f"<b>Net Fee:</b> ₹{s.net_fee:,.2f}"))
         f_sum_row.addWidget(QLabel(f"<b>Total Paid:</b> ₹{s.total_paid:,.2f}"))
         f_sum_row.addWidget(QLabel(f"<b>Balance Due:</b> ₹{s.balance_due:,.2f}"))
+        if s.last_payment_date:
+            f_sum_row.addWidget(QLabel(f"<b>Last Fee Paid:</b> {s.last_payment_date.strftime('%d %b %Y')} ({s.days_since_last_payment}d ago)"))
         f_sum_row.addStretch()
         fee_layout.addLayout(f_sum_row)
 

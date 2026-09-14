@@ -1,3 +1,4 @@
+from datetime import date
 from typing import List, Optional
 from PySide6.QtCore import Qt, QUrl, QRectF
 from PySide6.QtGui import QDesktopServices, QPixmap, QPainter, QPainterPath, QColor, QFont, QBrush
@@ -255,11 +256,14 @@ class StudentListView(QWidget):
             "Sort: Name (A-Z)",
             "Sort: Name (Z-A)",
             "Sort: Courses",
+            "Sort: Last Paid (Recent)",
+            "Sort: Last Paid (Oldest)",
+            "Sort: Fee (Pending)",
             "Sort: Active Status",
             "Sort: Latest Admissions",
         ])
-        self.sort_combo.setMinimumWidth(185)
-        self.sort_combo.setToolTip("Sort students by Name, Course, Active Status, or ID")
+        self.sort_combo.setMinimumWidth(190)
+        self.sort_combo.setToolTip("Sort students by Name, Course, Last Fee Paid, Active Status, or ID")
         self.sort_combo.currentTextChanged.connect(self._on_filter_changed)
         toolbar.addWidget(self.sort_combo, 0)
 
@@ -283,22 +287,24 @@ class StudentListView(QWidget):
         parent_layout.addLayout(toolbar)
 
     def _build_table(self, parent_layout: QVBoxLayout):
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels([
-            "Student Name", "Contact Number", "Course Enrolled", "Fee Status", "Status", "Actions"
+            "Student Name", "Contact Number", "Course Enrolled", "Last Fee Paid", "Fee Status", "Status", "Actions"
         ])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.Fixed)
-        self.table.setColumnWidth(3, 195) # Dedicated 195px so full text "● Partial (Bal: ₹35,000)" never clips
-        header.setSectionResizeMode(4, QHeaderView.Fixed)
-        self.table.setColumnWidth(4, 160) # Dedicated 160px for Status dropdown badge
-        header.setSectionResizeMode(5, QHeaderView.Fixed)
-        self.table.setColumnWidth(5, 215) # Dedicated 215px for WhatsApp and View buttons
+        header.setSectionResizeMode(0, QHeaderView.Stretch) # Student Name
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents) # Contact Number
+        header.setSectionResizeMode(2, QHeaderView.Stretch) # Course Enrolled
+        header.setSectionResizeMode(3, QHeaderView.Fixed) # Last Fee Paid
+        self.table.setColumnWidth(3, 175) # Dedicated 175px for "📅 23 Jul 2026 / ⏱️ 53d ago"
+        header.setSectionResizeMode(4, QHeaderView.Fixed) # Fee Status
+        self.table.setColumnWidth(4, 185) # Dedicated 185px for Fee Status badge
+        header.setSectionResizeMode(5, QHeaderView.Fixed) # Status
+        self.table.setColumnWidth(5, 145) # Dedicated 145px for Status dropdown badge
+        header.setSectionResizeMode(6, QHeaderView.Fixed) # Actions
+        self.table.setColumnWidth(6, 215) # Dedicated 215px for WhatsApp and View buttons
 
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -317,7 +323,14 @@ class StudentListView(QWidget):
                 self.sort_combo.setCurrentText("Sort: Name (A-Z)")
         elif logical_index == 2:  # Course Enrolled
             self.sort_combo.setCurrentText("Sort: Courses")
-        elif logical_index == 4:  # Status
+        elif logical_index == 3:  # Last Fee Paid
+            if self.sort_combo.currentText() == "Sort: Last Paid (Recent)":
+                self.sort_combo.setCurrentText("Sort: Last Paid (Oldest)")
+            else:
+                self.sort_combo.setCurrentText("Sort: Last Paid (Recent)")
+        elif logical_index == 4:  # Fee Status
+            self.sort_combo.setCurrentText("Sort: Fee (Pending)")
+        elif logical_index == 5:  # Status
             self.sort_combo.setCurrentText("Sort: Active Status")
 
     def refresh_data(self):
@@ -395,7 +408,83 @@ class StudentListView(QWidget):
             course_item = QTableWidgetItem(s.course_name or "-")
             course_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
 
-            # 4. Fee Status Badge Widget
+            # 4. Last Fee Paid Widget (Next to Course Enrolled)
+            last_paid_widget = QWidget()
+            last_paid_widget.setStyleSheet("background: transparent;")
+            lp_layout = QVBoxLayout(last_paid_widget)
+            lp_layout.setContentsMargins(6, 4, 6, 4)
+            lp_layout.setSpacing(2)
+            lp_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+            last_dt = s.last_payment_date
+            days_ago = s.days_since_last_payment
+            last_inst = s.latest_paid_installment
+
+            if last_dt is not None and days_ago is not None:
+                dt_str = last_dt.strftime("%d %b %Y")
+                if days_ago == 0:
+                    days_text = "Today"
+                    badge_color = "#10B981"
+                elif days_ago == 1:
+                    days_text = "Yesterday"
+                    badge_color = "#10B981"
+                elif days_ago <= 30:
+                    days_text = f"{days_ago} days ago"
+                    badge_color = "#34D399"
+                elif days_ago <= 60:
+                    days_text = f"{days_ago} days ago"
+                    badge_color = "#F59E0B"
+                else:
+                    days_text = f"{days_ago} days ago"
+                    badge_color = "#F87171"
+
+                dt_lbl = QLabel(f"📅 {dt_str}")
+                dt_lbl.setStyleSheet("color: #F1F5F9; font-size: 12px; font-weight: 600;")
+
+                days_lbl = QLabel(f"⏱️ {days_text}")
+                days_lbl.setStyleSheet(f"color: {badge_color}; font-size: 11px; font-weight: 600;")
+
+                lp_layout.addWidget(dt_lbl)
+                lp_layout.addWidget(days_lbl)
+
+                inst_label = last_inst.installment_label if last_inst else "N/A"
+                paid_amt = last_inst.paid_amount if last_inst else 0.0
+                mode = last_inst.payment_mode if (last_inst and last_inst.payment_mode) else "Cash/UPI"
+
+                last_paid_widget.setToolTip(
+                    f"Last Payment: ₹{paid_amt:,.2f} ({inst_label} Installment)\n"
+                    f"Date: {dt_str}\n"
+                    f"Time Elapsed: {days_ago} days ago\n"
+                    f"Payment Mode: {mode}\n"
+                    f"Total Paid so far: ₹{s.total_paid:,.2f} | Balance: ₹{s.balance_due:,.2f}"
+                )
+            else:
+                if s.fee_status == "No Fee" or s.effective_net_fee == 0:
+                    dt_lbl = QLabel("—")
+                    dt_lbl.setStyleSheet("color: #64748B; font-size: 12px;")
+                    days_lbl = QLabel("No Fee")
+                    days_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
+                    last_paid_widget.setToolTip("No fee configured for this student")
+                else:
+                    adm_days = (date.today() - s.admission_date).days if s.admission_date else 0
+                    dt_lbl = QLabel("❌ Unpaid")
+                    dt_lbl.setStyleSheet("color: #EF4444; font-size: 12px; font-weight: 600;")
+                    days_lbl = QLabel(f"{adm_days}d since adm.")
+                    days_lbl.setStyleSheet("color: #94A3B8; font-size: 11px;")
+                    last_paid_widget.setToolTip(
+                        f"No payments received yet.\n"
+                        f"Admission Date: {s.admission_date.strftime('%d %b %Y') if s.admission_date else 'N/A'} ({adm_days} days ago)\n"
+                        f"Total Net Fee: ₹{s.net_fee:,.2f}"
+                    )
+
+                lp_layout.addWidget(dt_lbl)
+                lp_layout.addWidget(days_lbl)
+
+            last_paid_item = QTableWidgetItem()
+            last_paid_item.setData(Qt.UserRole, days_ago if days_ago is not None else 999999)
+            last_paid_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+
+            # 5. Fee Status Badge Widget
             fee_status_widget = QWidget()
             fee_status_widget.setStyleSheet("background: transparent;")
             f_layout = QHBoxLayout(fee_status_widget)
@@ -431,7 +520,7 @@ class StudentListView(QWidget):
             fee_badge.setToolTip(f"Net Fee: ₹{s.net_fee:,.2f} | Total Paid: ₹{s.total_paid:,.2f} | Balance: ₹{s.balance_due:,.2f}")
             f_layout.addWidget(fee_badge)
 
-            # 5. Inline Editable Status Badge Dropdown
+            # 6. Inline Editable Status Badge Dropdown
             status_widget = QWidget()
             status_widget.setStyleSheet("background: transparent;")
             st_layout = QHBoxLayout(status_widget)
@@ -447,7 +536,7 @@ class StudentListView(QWidget):
             status_combo.setToolTip(f"Click to change status for {s.name} (instantly saved to DB)")
             st_layout.addWidget(status_combo)
 
-            # 6. Actions Widget (WhatsApp + View)
+            # 7. Actions Widget (WhatsApp + View)
             act_widget = QWidget()
             act_widget.setStyleSheet("background: transparent;")
             act_layout = QHBoxLayout(act_widget)
@@ -510,9 +599,11 @@ class StudentListView(QWidget):
             self.table.setCellWidget(row_idx, 0, name_widget)
             self.table.setItem(row_idx, 1, mobile_item)
             self.table.setItem(row_idx, 2, course_item)
-            self.table.setCellWidget(row_idx, 3, fee_status_widget)
-            self.table.setCellWidget(row_idx, 4, status_widget)
-            self.table.setCellWidget(row_idx, 5, act_widget)
+            self.table.setItem(row_idx, 3, last_paid_item)
+            self.table.setCellWidget(row_idx, 3, last_paid_widget)
+            self.table.setCellWidget(row_idx, 4, fee_status_widget)
+            self.table.setCellWidget(row_idx, 5, status_widget)
+            self.table.setCellWidget(row_idx, 6, act_widget)
 
     def _on_inline_status_changed(self, student_id: str, new_status: str):
         """Immediately updates student status in SQLite DB and updates dashboard stats."""

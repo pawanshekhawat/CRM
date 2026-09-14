@@ -250,6 +250,7 @@ class ReportGenerator:
             "District", "State", "PIN", "Status", "Admission Date",
             "Total Fee (Rs.)", "Discount (Rs.)", "Net Fee (Rs.)",
             "Total Paid (Rs.)", "Balance Due (Rs.)", "Fee Status",
+            "Last Paid Date", "Days Since Last Paid", "Last Paid Amount (Rs.)",
             "Referred By", "Referral Disc (Rs.)", "Referral Comm (Rs.)",
             "Referrals Count", "Total Comm Earned (Rs.)"
         ]
@@ -267,6 +268,9 @@ class ReportGenerator:
         # Append student rows
         for s in students:
             ref_by_text = f"{s.referred_by.name} ({s.referred_by.id_no})" if s.referred_by else "Direct / None"
+            last_dt_str = s.last_payment_date.strftime("%d-%m-%Y") if s.last_payment_date else "No Payment"
+            days_ago_val = s.days_since_last_payment if s.days_since_last_payment is not None else ""
+            last_amt = s.latest_paid_installment.paid_amount if (s.latest_paid_installment and s.latest_paid_installment.paid_amount) else 0.0
             row = [
                 s.id_no,
                 s.name,
@@ -288,6 +292,9 @@ class ReportGenerator:
                 s.total_paid,
                 s.balance_due,
                 s.fee_status,
+                last_dt_str,
+                days_ago_val,
+                last_amt,
                 ref_by_text,
                 s.referral_discount or 0.0,
                 s.referral_commission or 0.0,
@@ -319,9 +326,13 @@ class ReportGenerator:
                 "ID No", "Student Name", "Father Name", "Mobile No", "Email",
                 "Course", "Year/Sem", "Aadhar No", "College/School",
                 "District", "State", "PIN", "Status", "Admission Date",
-                "Total Fee", "Discount", "Net Fee", "Total Paid", "Balance Due", "Fee Status"
+                "Total Fee", "Discount", "Net Fee", "Total Paid", "Balance Due", "Fee Status",
+                "Last Paid Date", "Days Since Last Paid", "Last Paid Amount"
             ])
             for s in students:
+                last_dt_str = s.last_payment_date.strftime("%Y-%m-%d") if s.last_payment_date else ""
+                days_ago_val = s.days_since_last_payment if s.days_since_last_payment is not None else ""
+                last_amt = s.latest_paid_installment.paid_amount if (s.latest_paid_installment and s.latest_paid_installment.paid_amount) else 0.0
                 writer.writerow([
                     s.id_no,
                     s.name,
@@ -343,6 +354,9 @@ class ReportGenerator:
                     s.total_paid,
                     s.balance_due,
                     s.fee_status,
+                    last_dt_str,
+                    days_ago_val,
+                    last_amt,
                 ])
 
         return str(export_path)

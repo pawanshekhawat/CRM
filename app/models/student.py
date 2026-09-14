@@ -149,6 +149,49 @@ class Student(Base, TimestampMixin):
             return "Partial"
         return "Pending"
 
+    @property
+    def latest_paid_installment(self):
+        """Returns the most recent installment where a payment was recorded."""
+        paid_list = [inst for inst in (self.fee_installments or []) if (inst.paid_amount or 0.0) > 0]
+        if not paid_list:
+            return None
+        return max(
+            paid_list,
+            key=lambda inst: (inst.payment_date or self.admission_date or date.min, inst.installment_no),
+        )
+
+    @property
+    def last_payment_date(self):
+        """Date of the latest fee payment."""
+        latest = self.latest_paid_installment
+        if not latest:
+            return None
+        return latest.payment_date or self.admission_date
+
+    @property
+    def days_since_last_payment(self):
+        """Number of days elapsed since the latest fee payment."""
+        last_dt = self.last_payment_date
+        if not last_dt:
+            return None
+        return max(0, (date.today() - last_dt).days)
+
+    @property
+    def last_payment_summary(self) -> str:
+        """Formatted summary of last fee payment."""
+        last_dt = self.last_payment_date
+        if not last_dt:
+            return "No Payment"
+        days = self.days_since_last_payment
+        if days == 0:
+            days_str = "Today"
+        elif days == 1:
+            days_str = "Yesterday"
+        else:
+            days_str = f"{days}d ago"
+        return f"{last_dt.strftime('%d %b %Y')} ({days_str})"
+
+
 
 class StudentCourseSession(Base, TimestampMixin):
     """Tracks courses, session breakdown, books issued, and student signature."""
