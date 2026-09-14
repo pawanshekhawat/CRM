@@ -29,6 +29,7 @@ from app.modules.registry import module_registry
 from app.modules.students.student_module import StudentModule
 from app.modules.staff.staff_module import StaffModule
 from app.modules.courses.course_module import CourseModule
+from app.modules.messaging.messaging_module import MessagingModule
 from app.ui.theme import apply_theme
 
 
@@ -232,6 +233,7 @@ def main():
     module_registry.register(StudentModule())
     module_registry.register(StaffModule())
     module_registry.register(CourseModule())
+    module_registry.register(MessagingModule())
     module_registry.initialize_all()
 
     # Initialize PySide6 Application

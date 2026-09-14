@@ -52,6 +52,7 @@ def init_db():
     import app.models.custom_fields  # noqa: F401
     import app.models.staff  # noqa: F401
     import app.models.course  # noqa: F401
+    import app.models.message_template  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 

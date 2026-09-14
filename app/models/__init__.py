@@ -2,6 +2,7 @@ from app.models.student import Student, StudentCourseSession, StudentFeeInstallm
 from app.models.custom_fields import CustomFieldDefinition, CustomFieldValue
 from app.models.staff import Staff, Batch, BatchStudent
 from app.models.course import Course
+from app.models.message_template import MessageTemplate
 
 __all__ = [
     "Student",
@@ -13,5 +14,7 @@ __all__ = [
     "Batch",
     "BatchStudent",
     "Course",
+    "MessageTemplate",
 ]
+
 
