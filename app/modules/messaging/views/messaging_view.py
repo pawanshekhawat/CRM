@@ -84,7 +84,18 @@ class WhatsAppChatPreviewWidget(QFrame):
         # 1. Top Contact Header Bar (WhatsApp Web style)
         header_bar = QFrame()
         header_bar.setFixedHeight(46)
-        header_bar.setStyleSheet("background-color: #1F2C34; border-top-left-radius: 9px; border-top-right-radius: 9px; border-bottom: 1px solid #222E35;")
+        header_bar.setStyleSheet("""
+            QFrame {
+                background-color: #1F2C34;
+                border-top-left-radius: 9px;
+                border-top-right-radius: 9px;
+                border-bottom: 1px solid #222E35;
+            }
+            QLabel {
+                background: transparent;
+                background-color: transparent;
+            }
+        """)
         h_layout = QHBoxLayout(header_bar)
         h_layout.setContentsMargins(12, 4, 12, 4)
         h_layout.setSpacing(10)
@@ -108,11 +119,11 @@ class WhatsAppChatPreviewWidget(QFrame):
         info_col.setAlignment(Qt.AlignVCenter)
 
         self.contact_name_lbl = QLabel("Shivkant Batu")
-        self.contact_name_lbl.setStyleSheet("color: #E9EDEF; font-size: 13px; font-weight: 700;")
+        self.contact_name_lbl.setStyleSheet("background: transparent; color: #E9EDEF; font-size: 13px; font-weight: 700;")
         info_col.addWidget(self.contact_name_lbl)
 
         self.contact_status_lbl = QLabel("+91 9828965484 • Student")
-        self.contact_status_lbl.setStyleSheet("color: #8696A0; font-size: 10.5px;")
+        self.contact_status_lbl.setStyleSheet("background: transparent; color: #8696A0; font-size: 10.5px;")
         info_col.addWidget(self.contact_status_lbl)
         h_layout.addLayout(info_col, 1)
 
@@ -122,7 +133,7 @@ class WhatsAppChatPreviewWidget(QFrame):
         h_layout.addWidget(self.char_badge)
 
         icons_lbl = QLabel("🔍  ⋮")
-        icons_lbl.setStyleSheet("color: #AEBAC1; font-size: 13px; margin-left: 6px;")
+        icons_lbl.setStyleSheet("background: transparent; color: #AEBAC1; font-size: 13px; margin-left: 6px;")
         h_layout.addWidget(icons_lbl)
 
         layout.addWidget(header_bar)
@@ -148,23 +159,35 @@ class WhatsAppChatPreviewWidget(QFrame):
 
         self.bubble_frame = QFrame()
         self.bubble_frame.setObjectName("msgBubble")
-        self.bubble_frame.setMaximumWidth(420)
+        self.bubble_frame.setMaximumWidth(440)
         self.bubble_frame.setStyleSheet("""
             QFrame#msgBubble {
                 background-color: #005C4B;
                 border-radius: 8px;
                 border-top-right-radius: 2px;
-                padding: 4px;
+            }
+            QFrame#msgBubble QLabel {
+                background: transparent;
+                background-color: transparent;
             }
         """)
         b_layout = QVBoxLayout(self.bubble_frame)
-        b_layout.setContentsMargins(10, 8, 10, 6)
+        b_layout.setContentsMargins(12, 9, 12, 7)
         b_layout.setSpacing(4)
 
         self.msg_text_lbl = QLabel("Select a student to see the live WhatsApp message preview...")
         self.msg_text_lbl.setWordWrap(True)
         self.msg_text_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.msg_text_lbl.setStyleSheet("color: #E9EDEF; font-size: 12.5px; line-height: 1.4; font-family: 'Segoe UI', -apple-system, sans-serif;")
+        self.msg_text_lbl.setStyleSheet("""
+            QLabel {
+                background: transparent;
+                background-color: transparent;
+                color: #E9EDEF;
+                font-size: 12.5px;
+                line-height: 1.45;
+                font-family: 'Segoe UI', -apple-system, sans-serif;
+            }
+        """)
         b_layout.addWidget(self.msg_text_lbl)
 
         # Bubble Footer: Timestamp & Read Receipts
@@ -174,11 +197,11 @@ class WhatsAppChatPreviewWidget(QFrame):
 
         now_str = datetime.now().strftime("%I:%M %p").lstrip("0")
         self.time_lbl = QLabel(now_str)
-        self.time_lbl.setStyleSheet("color: #8696A0; font-size: 10px;")
+        self.time_lbl.setStyleSheet("background: transparent; background-color: transparent; color: #8696A0; font-size: 10px;")
         foot_row.addWidget(self.time_lbl)
 
         ticks_lbl = QLabel("✓✓")
-        ticks_lbl.setStyleSheet("color: #53BDEB; font-size: 11px; font-weight: bold;")
+        ticks_lbl.setStyleSheet("background: transparent; background-color: transparent; color: #53BDEB; font-size: 11px; font-weight: bold;")
         foot_row.addWidget(ticks_lbl)
 
         b_layout.addLayout(foot_row)
@@ -191,27 +214,49 @@ class WhatsAppChatPreviewWidget(QFrame):
         # 3. Bottom WhatsApp Input Bar (WhatsApp Web style)
         bottom_bar = QFrame()
         bottom_bar.setFixedHeight(44)
-        bottom_bar.setStyleSheet("background-color: #1F2C34; border-bottom-left-radius: 9px; border-bottom-right-radius: 9px; border-top: 1px solid #222E35;")
+        bottom_bar.setStyleSheet("""
+            QFrame {
+                background-color: #1F2C34;
+                border-bottom-left-radius: 9px;
+                border-bottom-right-radius: 9px;
+                border-top: 1px solid #222E35;
+            }
+            QLabel {
+                background: transparent;
+                background-color: transparent;
+            }
+        """)
         bot_layout = QHBoxLayout(bottom_bar)
         bot_layout.setContentsMargins(10, 4, 10, 4)
         bot_layout.setSpacing(8)
 
         btn_plus = QLabel("+")
-        btn_plus.setStyleSheet("color: #8696A0; font-size: 18px; font-weight: 300;")
+        btn_plus.setStyleSheet("background: transparent; color: #8696A0; font-size: 18px; font-weight: 300;")
         bot_layout.addWidget(btn_plus)
 
         btn_emoji = QLabel("😀")
-        btn_emoji.setStyleSheet("font-size: 14px;")
+        btn_emoji.setStyleSheet("background: transparent; font-size: 14px;")
         bot_layout.addWidget(btn_emoji)
 
         # Input Capsule
         input_pill = QFrame()
-        input_pill.setStyleSheet("background-color: #2A3942; border-radius: 6px;")
+        input_pill.setStyleSheet("""
+            QFrame {
+                background-color: #2A3942;
+                border-radius: 8px;
+            }
+            QLabel {
+                background: transparent;
+                background-color: transparent;
+                color: #8696A0;
+                font-size: 11.5px;
+            }
+        """)
         ip_layout = QHBoxLayout(input_pill)
         ip_layout.setContentsMargins(10, 2, 10, 2)
 
         self.input_placeholder = QLabel("Type a message")
-        self.input_placeholder.setStyleSheet("color: #8696A0; font-size: 11.5px;")
+        self.input_placeholder.setStyleSheet("background: transparent; color: #8696A0; font-size: 11.5px;")
         ip_layout.addWidget(self.input_placeholder)
         bot_layout.addWidget(input_pill, 1)
 
@@ -854,9 +899,9 @@ class MessagingView(QWidget):
             n_layout.setAlignment(Qt.AlignVCenter)
 
             n_lbl = QLabel(s.name)
-            n_lbl.setStyleSheet("color: #F8FAFC; font-weight: 600; font-size: 12.5px;")
+            n_lbl.setStyleSheet("background: transparent; color: #F8FAFC; font-weight: 600; font-size: 12.5px;")
             id_lbl = QLabel(f"ID: {s.id_no}")
-            id_lbl.setStyleSheet("color: #64748B; font-size: 10.5px;")
+            id_lbl.setStyleSheet("background: transparent; color: #64748B; font-size: 10.5px;")
 
             n_layout.addWidget(n_lbl)
             n_layout.addWidget(id_lbl)
