@@ -1,7 +1,11 @@
 import html
+import os
+from pathlib import Path
 from typing import Dict, List, Optional
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from datetime import datetime
+
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,6 +33,244 @@ from app.modules.messaging.views.dispatch_queue_dialog import DispatchQueueDialo
 from app.modules.messaging.views.template_editor_dialog import TemplateEditorDialog
 from app.modules.students.controllers import StudentController
 from app.ui.widgets.search_bar import SearchBar
+
+ASSETS_DIR = Path(__file__).parent.parent / "assets"
+BG_IMAGE_PATH = ASSETS_DIR / "whatsapp_bg.png"
+
+
+class WhatsAppChatCanvas(QWidget):
+    """Custom canvas that tiles the authentic dark WhatsApp doodle wallpaper."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.bg_pixmap: Optional[QPixmap] = None
+        if BG_IMAGE_PATH.exists():
+            self.bg_pixmap = QPixmap(str(BG_IMAGE_PATH))
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        if self.bg_pixmap and not self.bg_pixmap.isNull():
+            painter.drawTiledPixmap(self.rect(), self.bg_pixmap)
+        else:
+            painter.fillRect(self.rect(), QColor("#0B141A"))
+
+
+class WhatsAppChatPreviewWidget(QFrame):
+    """
+    Ultra-realistic WhatsApp Web chat interface simulator.
+    Renders the authentic top contact header, tiled doodle wallpaper canvas,
+    green outgoing chat bubble with timestamp + double ticks, and WhatsApp input bar.
+    """
+    send_clicked = Signal()
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._build_ui()
+
+    def _build_ui(self):
+        self.setObjectName("whatsappChatCard")
+        self.setStyleSheet("""
+            QFrame#whatsappChatCard {
+                background-color: #111B21;
+                border: 1px solid #1F2C34;
+                border-radius: 10px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # 1. Top Contact Header Bar (WhatsApp Web style)
+        header_bar = QFrame()
+        header_bar.setFixedHeight(46)
+        header_bar.setStyleSheet("background-color: #1F2C34; border-top-left-radius: 9px; border-top-right-radius: 9px; border-bottom: 1px solid #222E35;")
+        h_layout = QHBoxLayout(header_bar)
+        h_layout.setContentsMargins(12, 4, 12, 4)
+        h_layout.setSpacing(10)
+
+        # Avatar Circle
+        self.avatar_lbl = QLabel("SB")
+        self.avatar_lbl.setFixedSize(32, 32)
+        self.avatar_lbl.setAlignment(Qt.AlignCenter)
+        self.avatar_lbl.setStyleSheet("""
+            background-color: #00A884;
+            color: #FFFFFF;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 16px;
+        """)
+        h_layout.addWidget(self.avatar_lbl)
+
+        # Contact Info Column
+        info_col = QVBoxLayout()
+        info_col.setSpacing(1)
+        info_col.setAlignment(Qt.AlignVCenter)
+
+        self.contact_name_lbl = QLabel("Shivkant Batu")
+        self.contact_name_lbl.setStyleSheet("color: #E9EDEF; font-size: 13px; font-weight: 700;")
+        info_col.addWidget(self.contact_name_lbl)
+
+        self.contact_status_lbl = QLabel("+91 9828965484 • Student")
+        self.contact_status_lbl.setStyleSheet("color: #8696A0; font-size: 10.5px;")
+        info_col.addWidget(self.contact_status_lbl)
+        h_layout.addLayout(info_col, 1)
+
+        # Top Right Badges / Icons
+        self.char_badge = QLabel("0 chars")
+        self.char_badge.setStyleSheet("color: #8696A0; font-size: 11px; background-color: #111B21; border-radius: 4px; padding: 2px 6px;")
+        h_layout.addWidget(self.char_badge)
+
+        icons_lbl = QLabel("🔍  ⋮")
+        icons_lbl.setStyleSheet("color: #AEBAC1; font-size: 13px; margin-left: 6px;")
+        h_layout.addWidget(icons_lbl)
+
+        layout.addWidget(header_bar)
+
+        # 2. Chat Canvas with Tiled Doodle Wallpaper
+        self.canvas = WhatsAppChatCanvas(self)
+        canvas_layout = QVBoxLayout(self.canvas)
+        canvas_layout.setContentsMargins(14, 10, 14, 10)
+        canvas_layout.setSpacing(8)
+
+        # Date Badge (Centered)
+        date_row = QHBoxLayout()
+        date_row.addStretch()
+        date_pill = QLabel("TODAY")
+        date_pill.setStyleSheet("background-color: #182229; color: #8696A0; font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 6px;")
+        date_row.addWidget(date_pill)
+        date_row.addStretch()
+        canvas_layout.addLayout(date_row)
+
+        # Outgoing WhatsApp Message Bubble (Right Aligned)
+        bubble_row = QHBoxLayout()
+        bubble_row.addStretch(1)
+
+        self.bubble_frame = QFrame()
+        self.bubble_frame.setObjectName("msgBubble")
+        self.bubble_frame.setMaximumWidth(420)
+        self.bubble_frame.setStyleSheet("""
+            QFrame#msgBubble {
+                background-color: #005C4B;
+                border-radius: 8px;
+                border-top-right-radius: 2px;
+                padding: 4px;
+            }
+        """)
+        b_layout = QVBoxLayout(self.bubble_frame)
+        b_layout.setContentsMargins(10, 8, 10, 6)
+        b_layout.setSpacing(4)
+
+        self.msg_text_lbl = QLabel("Select a student to see the live WhatsApp message preview...")
+        self.msg_text_lbl.setWordWrap(True)
+        self.msg_text_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.msg_text_lbl.setStyleSheet("color: #E9EDEF; font-size: 12.5px; line-height: 1.4; font-family: 'Segoe UI', -apple-system, sans-serif;")
+        b_layout.addWidget(self.msg_text_lbl)
+
+        # Bubble Footer: Timestamp & Read Receipts
+        foot_row = QHBoxLayout()
+        foot_row.setSpacing(4)
+        foot_row.addStretch()
+
+        now_str = datetime.now().strftime("%I:%M %p").lstrip("0")
+        self.time_lbl = QLabel(now_str)
+        self.time_lbl.setStyleSheet("color: #8696A0; font-size: 10px;")
+        foot_row.addWidget(self.time_lbl)
+
+        ticks_lbl = QLabel("✓✓")
+        ticks_lbl.setStyleSheet("color: #53BDEB; font-size: 11px; font-weight: bold;")
+        foot_row.addWidget(ticks_lbl)
+
+        b_layout.addLayout(foot_row)
+        bubble_row.addWidget(self.bubble_frame, 4)
+        canvas_layout.addLayout(bubble_row)
+
+        canvas_layout.addStretch(1)
+        layout.addWidget(self.canvas, 1)
+
+        # 3. Bottom WhatsApp Input Bar (WhatsApp Web style)
+        bottom_bar = QFrame()
+        bottom_bar.setFixedHeight(44)
+        bottom_bar.setStyleSheet("background-color: #1F2C34; border-bottom-left-radius: 9px; border-bottom-right-radius: 9px; border-top: 1px solid #222E35;")
+        bot_layout = QHBoxLayout(bottom_bar)
+        bot_layout.setContentsMargins(10, 4, 10, 4)
+        bot_layout.setSpacing(8)
+
+        btn_plus = QLabel("+")
+        btn_plus.setStyleSheet("color: #8696A0; font-size: 18px; font-weight: 300;")
+        bot_layout.addWidget(btn_plus)
+
+        btn_emoji = QLabel("😀")
+        btn_emoji.setStyleSheet("font-size: 14px;")
+        bot_layout.addWidget(btn_emoji)
+
+        # Input Capsule
+        input_pill = QFrame()
+        input_pill.setStyleSheet("background-color: #2A3942; border-radius: 6px;")
+        ip_layout = QHBoxLayout(input_pill)
+        ip_layout.setContentsMargins(10, 2, 10, 2)
+
+        self.input_placeholder = QLabel("Type a message")
+        self.input_placeholder.setStyleSheet("color: #8696A0; font-size: 11.5px;")
+        ip_layout.addWidget(self.input_placeholder)
+        bot_layout.addWidget(input_pill, 1)
+
+        # Green Send Button
+        self.send_btn = QPushButton("➤")
+        self.send_btn.setToolTip("Open in WhatsApp for this student (1-Click)")
+        self.send_btn.setCursor(Qt.PointingHandCursor)
+        self.send_btn.setFixedSize(30, 30)
+        self.send_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00A884;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 15px;
+                font-size: 13px;
+                font-weight: bold;
+                padding-left: 2px;
+            }
+            QPushButton:hover {
+                background-color: #25D366;
+            }
+        """)
+        self.send_btn.clicked.connect(self.send_clicked.emit)
+        bot_layout.addWidget(self.send_btn)
+
+        layout.addWidget(bottom_bar)
+
+    def set_preview(self, text: str, student: Optional[Student], raw_char_count: int = 0):
+        """Update live preview with recipient details and rendered message content."""
+        self.char_badge.setText(f"{raw_char_count} chars")
+
+        if not student:
+            self.avatar_lbl.setText("?")
+            self.contact_name_lbl.setText("No Student Selected")
+            self.contact_status_lbl.setText("Select a student from directory")
+            self.msg_text_lbl.setText("Select a student from the directory on the left to see live personalized WhatsApp message preview.")
+            return
+
+        # Initials for avatar
+        parts = (student.name or "").strip().split()
+        if len(parts) >= 2:
+            initials = (parts[0][0] + parts[1][0]).upper()
+        elif len(parts) == 1 and parts[0]:
+            initials = parts[0][:2].upper()
+        else:
+            initials = "ST"
+
+        self.avatar_lbl.setText(initials)
+        self.contact_name_lbl.setText(student.name or "Student")
+        course_str = f" • {student.course_name}" if student.course_name else ""
+        self.contact_status_lbl.setText(f"+91 {student.mobile_no or 'N/A'}{course_str}")
+
+        if not text:
+            self.msg_text_lbl.setText("Type a message or select a saved template above to see the WhatsApp preview.")
+        else:
+            self.msg_text_lbl.setText(text)
+
+        now_str = datetime.now().strftime("%I:%M %p").lstrip("0")
+        self.time_lbl.setText(now_str)
 
 
 class MessagingView(QWidget):
@@ -112,7 +354,7 @@ class MessagingView(QWidget):
         right_widget = self._build_right_panel()
         splitter.addWidget(right_widget)
 
-        splitter.setSizes([600, 520])
+        splitter.setSizes([580, 540])
         main_layout.addWidget(splitter, 1)
 
     def _build_left_panel(self) -> QWidget:
@@ -425,18 +667,18 @@ class MessagingView(QWidget):
         # 3. Message Composer Text Area
         self.composer_edit = QTextEdit()
         self.composer_edit.setPlaceholderText("Write your WhatsApp message template here using {name}, {course}, {balance_due} and Spintax variations...")
-        self.composer_edit.setMinimumHeight(95)
-        self.composer_edit.setMaximumHeight(130)
+        self.composer_edit.setMinimumHeight(80)
+        self.composer_edit.setMaximumHeight(105)
         self.composer_edit.setStyleSheet("""
             QTextEdit {
                 background-color: #0C1018;
                 border: 1px solid #1F293D;
                 border-radius: 6px;
                 padding: 8px;
-                font-size: 12.5px;
+                font-size: 12px;
                 font-family: 'Consolas', 'Segoe UI', monospace;
                 color: #F8FAFC;
-                line-height: 1.4;
+                line-height: 1.35;
             }
             QTextEdit:focus {
                 border: 1px solid #0284C7;
@@ -446,42 +688,15 @@ class MessagingView(QWidget):
         self.composer_edit.textChanged.connect(self._update_live_preview)
         layout.addWidget(self.composer_edit)
 
-        # 4. WhatsApp Live Chat Preview Box
-        prev_header = QHBoxLayout()
-        prev_title = QLabel("<b>💬 Live WhatsApp Preview:</b>")
-        prev_title.setStyleSheet("font-size: 12px; color: #E2E8F0;")
-        prev_header.addWidget(prev_title)
+        # 4. Realistic WhatsApp Chat Simulator
+        self.chat_preview = WhatsAppChatPreviewWidget(self)
+        self.chat_preview.send_clicked.connect(self._on_single_send_clicked)
+        layout.addWidget(self.chat_preview, 1)
 
-        self.preview_student_lbl = QLabel("")
-        self.preview_student_lbl.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 600;")
-        prev_header.addWidget(self.preview_student_lbl)
-
-        prev_header.addStretch()
-
-        self.char_count_lbl = QLabel("0 chars")
-        self.char_count_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
-        prev_header.addWidget(self.char_count_lbl)
-        layout.addLayout(prev_header)
-
-        # Live WhatsApp Chat View
-        self.preview_box = QTextEdit()
-        self.preview_box.setReadOnly(True)
-        self.preview_box.setMinimumHeight(120)
-        self.preview_box.setStyleSheet("""
-            QTextEdit {
-                background-color: #0B141A;
-                border: 1px solid #1F293D;
-                border-radius: 8px;
-                padding: 6px;
-            }
-        """)
-        layout.addWidget(self.preview_box, 1)
-
-        # 5. Bottom Action Buttons
+        # 5. Bottom Batch Dispatch Action Button
         act_box = QVBoxLayout()
         act_box.setSpacing(6)
 
-        # Primary Bulk Dispatch Button
         self.start_dispatch_btn = QPushButton("⚡ Start WhatsApp Batch Dispatch (0 Selected)")
         self.start_dispatch_btn.setObjectName("primaryBtn")
         self.start_dispatch_btn.setCursor(Qt.PointingHandCursor)
@@ -507,27 +722,6 @@ class MessagingView(QWidget):
         """)
         self.start_dispatch_btn.clicked.connect(self._on_start_batch_dispatch)
         act_box.addWidget(self.start_dispatch_btn)
-
-        # Single Student 1-Click Send Button
-        self.single_send_btn = QPushButton("💬 Open WhatsApp for Highlighted Student (1-Click)")
-        self.single_send_btn.setCursor(Qt.PointingHandCursor)
-        self.single_send_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1E293B;
-                color: #38BDF8;
-                border: 1px solid #0284C7;
-                border-radius: 6px;
-                padding: 7px 12px;
-                font-weight: 600;
-                font-size: 11.5px;
-            }
-            QPushButton:hover {
-                background-color: #0284C7;
-                color: #FFFFFF;
-            }
-        """)
-        self.single_send_btn.clicked.connect(self._on_single_send_clicked)
-        act_box.addWidget(self.single_send_btn)
 
         layout.addLayout(act_box)
 
@@ -772,42 +966,19 @@ class MessagingView(QWidget):
 
     def _update_live_preview(self):
         template_text = self.composer_edit.toPlainText().strip()
-        self.char_count_lbl.setText(f"{len(template_text)} chars")
+        char_count = len(template_text)
 
         if not self.highlighted_student:
-            self.preview_student_lbl.setText("")
-            self.preview_box.setHtml(
-                "<div style='color: #64748B; font-style: italic; padding: 24px; text-align: center; font-size: 12px;'>"
-                "Select a student from the directory on the left to see live personalized message preview.</div>"
-            )
-            self.single_send_btn.setText("💬 Open WhatsApp for Highlighted Student (1-Click)")
+            self.chat_preview.set_preview("", None, char_count)
             return
 
         s = self.highlighted_student
-        self.preview_student_lbl.setText(f"👤 {s.name} (+91 {s.mobile_no})")
-        self.single_send_btn.setText(f"💬 Open WhatsApp for {s.name} (1-Click Direct)")
-
         if not template_text:
-            self.preview_box.setHtml(
-                "<div style='color: #64748B; font-style: italic; padding: 24px; text-align: center; font-size: 12px;'>"
-                "Type a message or select a saved template above to see the WhatsApp preview.</div>"
-            )
+            self.chat_preview.set_preview("", s, char_count)
             return
 
-        rendered = MessageController.render_message(template_text, s, randomize_spintax=False)
-        escaped_text = html.escape(rendered).replace('\n', '<br>')
-
-        chat_html = f"""
-        <div style="background-color: #0B141A; padding: 10px 14px; border-radius: 8px; font-family: -apple-system, 'Segoe UI', sans-serif;">
-            <div style="background-color: #005C4B; color: #E9EDEF; padding: 10px 14px; border-radius: 8px; border-top-right-radius: 2px; font-size: 12.5px; line-height: 1.45; word-wrap: break-word;">
-                <div>{escaped_text}</div>
-                <div style="text-align: right; font-size: 10px; color: #8696A0; margin-top: 5px;">
-                    12:45 PM &nbsp;<span style="color: #53BDEB; font-weight: bold;">✓✓</span>
-                </div>
-            </div>
-        </div>
-        """
-        self.preview_box.setHtml(chat_html)
+        rendered = MessageController.render_message(template_text, s, randomize_spintax=True)
+        self.chat_preview.set_preview(rendered, s, char_count)
 
     def _create_new_template(self):
         dlg = TemplateEditorDialog(parent=self)
