@@ -103,6 +103,16 @@ messaging_assets = ROOT_DIR / "app" / "modules" / "messaging" / "assets"
 if messaging_assets.exists():
     cmd.extend(["--add-data", f"{messaging_assets};app/modules/messaging/assets"])
 
+# Bundle all essential runtime DLLs (vcruntime140, vcruntime140_1, python3xx, sqlite3, ssl)
+py_base = Path(sys.base_prefix)
+for dll in py_base.glob("*.dll"):
+    cmd.extend(["--add-binary", f"{dll};."])
+
+dlls_folder = py_base / "DLLs"
+if dlls_folder.exists():
+    for dll in dlls_folder.glob("*.dll"):
+        cmd.extend(["--add-binary", f"{dll};."])
+
 for imp in HIDDEN_IMPORTS:
     cmd.extend(["--hidden-import", imp])
 

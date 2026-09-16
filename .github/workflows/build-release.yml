@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    paths:
-      - 'config/version.json'
     branches:
       - main
   workflow_dispatch:
