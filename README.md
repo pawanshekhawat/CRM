@@ -1,4 +1,4 @@
-# Isolated CRM (Desktop Edition)
+# CRM (Desktop Edition)
 
 A portable, offline desktop CRM application engineered to run locally with complete data privacy and zero cloud storage.
 
