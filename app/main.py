@@ -25,12 +25,14 @@ from PySide6.QtWidgets import (
 # Core imports
 from app.core.config import APP_NAME, APP_VERSION, DATABASE_PATH, LOGS_DIR, ROOT_DIR
 from app.core.database import init_db, close_db
+from app.core.updater import UpdateCheckWorker, UpdateInfo
 from app.modules.registry import module_registry
 from app.modules.students.student_module import StudentModule
 from app.modules.staff.staff_module import StaffModule
 from app.modules.courses.course_module import CourseModule
 from app.modules.messaging.messaging_module import MessagingModule
 from app.ui.theme import apply_theme
+from app.ui.widgets.update_dialog import UpdateDialog
 
 
 # Configure logging strictly to USB logs directory
@@ -45,8 +47,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CRM.Main")
 
+
 class MainWindow(QMainWindow):
-    """Main Application Window with pluggable sidebar navigation."""
+    """Main Application Window with pluggable sidebar navigation and auto-update support."""
 
     def __init__(self):
         super().__init__()
@@ -55,6 +58,8 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
 
         self.module_buttons = {}
+        self.latest_update_info: Optional[UpdateInfo] = None
+        self.update_check_worker: Optional[UpdateCheckWorker] = None
 
         # Main Layout Structure
         central_widget = QWidget()
@@ -91,6 +96,9 @@ class MainWindow(QMainWindow):
 
         # Mount Modules
         self._load_registered_modules()
+
+        # Start non-blocking background update check
+        self._start_background_update_check()
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
@@ -155,13 +163,58 @@ class MainWindow(QMainWindow):
 
         layout = QHBoxLayout(top_bar)
         layout.setContentsMargins(20, 0, 20, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         self.page_title = QLabel("Students & Admissions")
         self.page_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #F8FAFC;")
         layout.addWidget(self.page_title)
 
         layout.addStretch()
+
+        # Dynamic Update Available Pill (Hidden by default, shown when newer version found)
+        self.update_pill_btn = QPushButton("✨ Update Available")
+        self.update_pill_btn.setVisible(False)
+        self.update_pill_btn.setCursor(Qt.PointingHandCursor)
+        self.update_pill_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #064E3B;
+                color: #34D399;
+                border: 1px solid #059669;
+                border-radius: 12px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+                color: #FFFFFF;
+            }
+        """)
+        self.update_pill_btn.clicked.connect(self._open_update_dialog)
+        layout.addWidget(self.update_pill_btn)
+
+        # Check for Updates Button
+        self.check_update_btn = QPushButton("🔄 Check for Updates")
+        self.check_update_btn.setToolTip("Check online GitHub repository for software updates")
+        self.check_update_btn.setCursor(Qt.PointingHandCursor)
+        self.check_update_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E2330;
+                color: #CBD5E1;
+                border: 1px solid #333C4E;
+                border-radius: 12px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #283347;
+                color: #FFFFFF;
+                border-color: #3B82F6;
+            }
+        """)
+        self.check_update_btn.clicked.connect(self._open_update_dialog)
+        layout.addWidget(self.check_update_btn)
 
         # System / Institute Info Chip
         inst_chip = QLabel("Skill India • MSME Registered")
@@ -223,6 +276,29 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.error(f"Error refreshing module '{module_name}': {e}")
 
+    def _start_background_update_check(self):
+        """Launches silent background thread to check for software updates."""
+        self.update_check_worker = UpdateCheckWorker(self)
+        self.update_check_worker.update_found.connect(self._on_update_found)
+        self.update_check_worker.up_to_date.connect(self._on_up_to_date)
+        self.update_check_worker.start()
+
+    def _on_update_found(self, info: UpdateInfo):
+        self.latest_update_info = info
+        self.update_pill_btn.setText(f"✨ Update Available: v{info.latest_version}")
+        self.update_pill_btn.setVisible(True)
+        self.status_bar.showMessage(
+            f"Running in isolated USB mode | ✨ New update v{info.latest_version} available! Click 'Check for Updates' to install."
+        )
+
+    def _on_up_to_date(self, info: UpdateInfo):
+        self.latest_update_info = info
+        self.update_pill_btn.setVisible(False)
+
+    def _open_update_dialog(self):
+        """Opens the software update manager dialog."""
+        dlg = UpdateDialog(update_info=self.latest_update_info, parent=self)
+        dlg.exec()
 
     def closeEvent(self, event):
         """Clean shutdown handler."""
@@ -230,6 +306,7 @@ class MainWindow(QMainWindow):
         close_db()
         module_registry.shutdown_all()
         event.accept()
+
 
 def main():
     """Application Entrypoint."""
@@ -253,6 +330,7 @@ def main():
 
     logger.info("Personal CRM Application started successfully.")
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()

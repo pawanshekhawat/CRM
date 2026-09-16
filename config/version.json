@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "release_date": "2026-09-16",
+  "title": "CADDESK Personal CRM - Institute Edition v1.0.0",
+  "min_supported_version": "1.0.0",
+  "changelog": [
+    "Ultra-modern dark theme UI with modular pluggable architecture",
+    "Students & Admissions management with multi-page image form viewer",
+    "Course catalog & automated batch session tracking",
+    "Staff management & instructor assignment",
+    "WhatsApp Message Automation with Spintax and authentic chat simulator",
+    "Portable USB offline mode with zero cloud database storage"
+  ],
+  "download_url": "https://github.com/pawanshekhawat/Isolated-CRM/releases/latest",
+  "github_repo": "pawanshekhawat/Isolated-CRM"
+}

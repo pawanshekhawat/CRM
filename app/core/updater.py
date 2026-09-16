@@ -1,0 +1,318 @@
+import json
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+import zipfile
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+from PySide6.QtCore import QObject, QThread, Signal
+
+from app.core.config import (
+    APP_VERSION,
+    BACKUPS_DIR,
+    CONFIG_DIR,
+    DATABASE_PATH,
+    DATA_DIR,
+    ROOT_DIR,
+    TEMP_DIR,
+)
+
+logger = logging.getLogger("CRM.Updater")
+
+GITHUB_REPO = "pawanshekhawat/Isolated-CRM"
+MANIFEST_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/config/version.json"
+GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+
+@dataclass
+class UpdateInfo:
+    """Encapsulates release and version information."""
+    current_version: str = APP_VERSION
+    latest_version: str = APP_VERSION
+    title: str = ""
+    changelog: List[str] = field(default_factory=list)
+    download_url: str = ""
+    release_date: str = ""
+    is_update_available: bool = False
+    file_name: str = ""
+    file_size_bytes: int = 0
+    github_repo: str = GITHUB_REPO
+
+
+def parse_version_tuple(v_str: str) -> Tuple[int, ...]:
+    """Parses a version string like 'v1.2.3' into a numeric tuple (1, 2, 3)."""
+    clean_str = re.sub(r"^[vV]", "", (v_str or "").strip())
+    parts = []
+    for segment in clean_str.split("."):
+        num_match = re.match(r"^(\d+)", segment)
+        if num_match:
+            parts.append(int(num_match.group(1)))
+        else:
+            parts.append(0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)
+
+
+def compare_versions(current_v: str, latest_v: str) -> int:
+    """
+    Compares two version strings.
+    Returns:
+       1 if latest_v > current_v (update available)
+       0 if latest_v == current_v
+      -1 if latest_v < current_v
+    """
+    cur_tuple = parse_version_tuple(current_v)
+    lat_tuple = parse_version_tuple(latest_v)
+    if lat_tuple > cur_tuple:
+        return 1
+    elif lat_tuple < cur_tuple:
+        return -1
+    return 0
+
+
+def create_pre_update_backup() -> Optional[Path]:
+    """
+    Creates a timestamped backup copy of crm.db in data/backups/
+    before applying any code or application updates.
+    """
+    if not DATABASE_PATH.exists():
+        return None
+
+    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"crm_backup_pre_update_{timestamp}.db"
+    backup_path = BACKUPS_DIR / backup_filename
+
+    try:
+        shutil.copy2(DATABASE_PATH, backup_path)
+        logger.info(f"Created pre-update database backup: {backup_path}")
+        return backup_path
+    except Exception as e:
+        logger.error(f"Failed to create pre-update database backup: {e}")
+        return None
+
+
+def fetch_update_info(timeout: int = 6) -> UpdateInfo:
+    """
+    Fetches the latest release info from GitHub version manifest or Releases API.
+    Does NOT throw unhandled network exceptions; returns UpdateInfo with is_update_available=False on error.
+    """
+    update_info = UpdateInfo(current_version=APP_VERSION)
+
+    headers = {
+        "User-Agent": f"PersonalCRM-Updater/{APP_VERSION}",
+        "Accept": "application/json",
+    }
+
+    # 1. First attempt: Raw GitHub version.json manifest (lightweight & no rate limit)
+    try:
+        req = urllib.request.Request(MANIFEST_RAW_URL, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status == 200:
+                raw_data = response.read().decode("utf-8")
+                manifest = json.loads(raw_data)
+                latest_v = manifest.get("version", APP_VERSION)
+                update_info.latest_version = latest_v
+                update_info.title = manifest.get("title", f"Version {latest_v}")
+                update_info.changelog = manifest.get("changelog", [])
+                update_info.release_date = manifest.get("release_date", "")
+                update_info.download_url = manifest.get("download_url", "")
+                update_info.github_repo = manifest.get("github_repo", GITHUB_REPO)
+                update_info.is_update_available = compare_versions(APP_VERSION, latest_v) > 0
+                logger.info(f"Update check (manifest): Current={APP_VERSION}, Latest={latest_v}, Available={update_info.is_update_available}")
+                return update_info
+    except Exception as e:
+        logger.debug(f"Raw manifest fetch failed: {e}. Falling back to GitHub Releases API...")
+
+    # 2. Second attempt: GitHub Releases API
+    try:
+        req = urllib.request.Request(GITHUB_RELEASES_API_URL, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status == 200:
+                raw_data = response.read().decode("utf-8")
+                rel = json.loads(raw_data)
+                tag_name = rel.get("tag_name", "")
+                latest_v = re.sub(r"^[vV]", "", tag_name) or APP_VERSION
+                update_info.latest_version = latest_v
+                update_info.title = rel.get("name") or f"Version {latest_v}"
+                update_info.release_date = (rel.get("published_at") or "")[:10]
+                update_info.download_url = rel.get("html_url", "")
+
+                # Parse changelog lines from release body
+                body_text = rel.get("body", "")
+                lines = [line.strip().lstrip("-*# ").strip() for line in body_text.splitlines() if line.strip()]
+                update_info.changelog = lines if lines else ["Performance optimizations and bug fixes."]
+
+                # Check for downloadable assets
+                assets = rel.get("assets", [])
+                if assets:
+                    update_info.download_url = assets[0].get("browser_download_url", update_info.download_url)
+                    update_info.file_name = assets[0].get("name", "")
+                    update_info.file_size_bytes = assets[0].get("size", 0)
+
+                update_info.is_update_available = compare_versions(APP_VERSION, latest_v) > 0
+                logger.info(f"Update check (Releases API): Current={APP_VERSION}, Latest={latest_v}, Available={update_info.is_update_available}")
+                return update_info
+    except Exception as e:
+        logger.info(f"GitHub Releases API fetch failed or offline: {e}")
+
+    # Fallback to local config version if offline
+    local_manifest = CONFIG_DIR / "version.json"
+    if local_manifest.exists():
+        try:
+            with open(local_manifest, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                update_info.title = data.get("title", f"Version {APP_VERSION}")
+                update_info.changelog = data.get("changelog", [])
+        except Exception:
+            pass
+
+    return update_info
+
+
+class UpdateCheckWorker(QThread):
+    """Asynchronous background worker to check for software updates without blocking UI."""
+    update_found = Signal(object)    # UpdateInfo
+    up_to_date = Signal(object)      # UpdateInfo
+    check_failed = Signal(str)       # Error message
+
+    def __init__(self, parent: Optional[QObject] = None):
+        super().__init__(parent)
+
+    def run(self):
+        try:
+            info = fetch_update_info()
+            if info.is_update_available:
+                self.update_found.emit(info)
+            else:
+                self.up_to_date.emit(info)
+        except Exception as e:
+            logger.error(f"Error during update check worker: {e}")
+            self.check_failed.emit(str(e))
+
+
+class UpdateDownloadWorker(QThread):
+    """Streams the update file to data/temp/ and reports download progress."""
+    progress = Signal(int, int, float)   # bytes_downloaded, total_bytes, percentage
+    download_finished = Signal(str)      # target_file_path
+    download_failed = Signal(str)        # error message
+
+    def __init__(self, download_url: str, file_name: Optional[str] = None, parent: Optional[QObject] = None):
+        super().__init__(parent)
+        self.download_url = download_url
+        self.file_name = file_name or "PersonalCRM_Update.zip"
+
+    def run(self):
+        try:
+            TEMP_DIR.mkdir(parents=True, exist_ok=True)
+            target_path = TEMP_DIR / self.file_name
+
+            headers = {
+                "User-Agent": f"PersonalCRM-Updater/{APP_VERSION}",
+            }
+            req = urllib.request.Request(self.download_url, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=30) as response:
+                total_size = int(response.headers.get("Content-Length", 0))
+                downloaded = 0
+                chunk_size = 1024 * 64  # 64 KB chunks
+
+                with open(target_path, "wb") as f_out:
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        f_out.write(chunk)
+                        downloaded += len(chunk)
+                        pct = (downloaded / total_size * 100.0) if total_size > 0 else 0.0
+                        self.progress.emit(downloaded, total_size, pct)
+
+            logger.info(f"Update package downloaded successfully to: {target_path}")
+            self.download_finished.emit(str(target_path))
+        except Exception as e:
+            logger.error(f"Failed to download update package: {e}")
+            self.download_failed.emit(str(e))
+
+
+def apply_update_and_restart(update_file_path: str):
+    """
+    Safely installs downloaded update files and restarts the application.
+    STRICT RULE: The data/ folder (crm.db, photos) is 100% PRESERVED and NEVER overwritten.
+    """
+    create_pre_update_backup()
+
+    update_path = Path(update_file_path)
+    if not update_path.exists():
+        raise FileNotFoundError(f"Update file not found: {update_file_path}")
+
+    is_frozen = getattr(sys, "frozen", False)
+
+    if is_frozen:
+        # Standalone Executable update: Replace PersonalCRM.exe via a detached helper script
+        target_exe = Path(sys.executable).resolve()
+        helper_bat = TEMP_DIR / "apply_update.bat"
+
+        bat_content = f"""@echo off
+title Personal CRM Updater
+echo Updating Personal CRM to latest version...
+echo Waiting for application to exit...
+timeout /t 2 /nobreak > nul
+
+echo Applying update...
+copy /y "{update_path.resolve()}" "{target_exe}" > nul
+if errorlevel 1 (
+    echo [ERROR] Update copy failed.
+    pause
+    exit /b 1
+)
+
+echo Cleaning up temporary update file...
+del /f /q "{update_path.resolve()}" > nul
+
+echo Restarting Personal CRM...
+start "" "{target_exe}"
+del "%~f0"
+exit
+"""
+        helper_bat.write_text(bat_content, encoding="utf-8")
+        logger.info(f"Generated standalone updater script at: {helper_bat}")
+
+        # Launch detached updater script
+        subprocess.Popen(
+            ["cmd.exe", "/c", str(helper_bat)],
+            creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0,
+            close_fds=True,
+        )
+        sys.exit(0)
+
+    else:
+        # Source/Script mode: Extract updated code files excluding data/
+        if update_path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(update_path, "r") as zip_ref:
+                for member in zip_ref.namelist():
+                    # Strictly avoid overwriting data or local backups
+                    norm_name = member.replace("\\", "/").strip("/")
+                    if norm_name.startswith("data/") or norm_name == "data":
+                        continue
+                    if norm_name.startswith("logs/") or norm_name == "logs":
+                        continue
+                    zip_ref.extract(member, ROOT_DIR)
+            logger.info("Extracted update files over source directory successfully.")
+            update_path.unlink(missing_ok=True)
+
+        # Relaunch via start_crm.bat or python
+        start_bat = ROOT_DIR / "start_crm.bat"
+        if start_bat.exists():
+            subprocess.Popen(["cmd.exe", "/c", str(start_bat)], cwd=str(ROOT_DIR))
+        else:
+            subprocess.Popen([sys.executable, str(ROOT_DIR / "app" / "main.py")], cwd=str(ROOT_DIR))
+        sys.exit(0)
