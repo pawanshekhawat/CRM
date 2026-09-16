@@ -1,16 +1,18 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "release_date": "2026-09-16",
-  "title": "Isolated CRM v1.0.1 - WhatsApp Chat Simulator & Auto-Updater",
+  "title": "Isolated CRM v1.0.2 - Automated GitHub In-App Updates & WhatsApp Simulator",
   "min_supported_version": "1.0.0",
   "changelog": [
+    "Added automated GitHub Actions in-app update pipeline",
+    "Added 64-bit Windows PE binary validation before applying updates",
     "Added authentic dark WhatsApp doodle wallpaper & chat interface simulator",
     "Fixed message bubble transparent text background",
-    "Added in-app auto-updater with 1-click update installation",
-    "Offline USB data preservation & automated pre-update database backup"
+    "100% Offline USB data preservation & automated pre-update database backup"
   ],
   "download_url": "https://github.com/pawanshekhawat/CRM/archive/refs/heads/main.zip",
-  "exe_download_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.1/PersonalCRM.exe",
-  "portable_zip_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.1/PersonalCRM_Portable_v1.0.1.zip",
+  "exe_download_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.2/PersonalCRM.exe",
+  "portable_zip_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.2/PersonalCRM_Portable_v1.0.2.zip",
   "github_repo": "pawanshekhawat/CRM"
 }
+
