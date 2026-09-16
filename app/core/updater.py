@@ -385,7 +385,7 @@ del /f /q "{new_exe_to_copy}" > nul 2>&1
 del /f /q "{update_path.resolve()}" > nul 2>&1
 
 echo Restarting Personal CRM...
-start "" "{target_exe}"
+start /I "" "{target_exe}"
 del "%~f0"
 exit
 """
@@ -401,13 +401,25 @@ exit
         except Exception:
             pass
 
+        # Prepare clean environment dictionary without PyInstaller internal flags
+        clean_env = os.environ.copy()
+        for k in list(clean_env.keys()):
+            if k.startswith("_PYI_") or k.startswith("_MEIPASS"):
+                del clean_env[k]
+
         # Launch detached updater script
+        flags = 0
+        if os.name == "nt":
+            flags = subprocess.CREATE_NEW_CONSOLE | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+
         subprocess.Popen(
             ["cmd.exe", "/c", str(helper_bat)],
-            creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0,
+            creationflags=flags,
             close_fds=True,
+            env=clean_env,
         )
         os._exit(0)
+
 
 
     else:

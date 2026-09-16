@@ -29,7 +29,7 @@ DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
 
 # App Information
 APP_NAME = "Personal CRM - Institute Edition"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.3"
 ORGANIZATION_NAME = "CADDESK Centre"
 
 def init_directories():
@@ -49,11 +49,9 @@ def init_directories():
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
 
-    # Redirect OS temporary file allocations into the USB temp folder
+    # Direct python tempfile allocations into the USB temp folder
     tempfile.tempdir = str(TEMP_DIR)
-    os.environ["TMPDIR"] = str(TEMP_DIR)
-    os.environ["TEMP"] = str(TEMP_DIR)
-    os.environ["TMP"] = str(TEMP_DIR)
 
 # Initialize directories automatically upon config import
 init_directories()
+
