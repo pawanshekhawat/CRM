@@ -1,16 +1,14 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "release_date": "2026-09-16",
-  "title": "CADDESK Personal CRM - Institute Edition v1.0.0",
+  "title": "Isolated CRM v1.0.1 - WhatsApp Chat Simulator & Auto-Updater",
   "min_supported_version": "1.0.0",
   "changelog": [
-    "Ultra-modern dark theme UI with modular pluggable architecture",
-    "Students & Admissions management with multi-page image form viewer",
-    "Course catalog & automated batch session tracking",
-    "Staff management & instructor assignment",
-    "WhatsApp Message Automation with Spintax and authentic chat simulator",
-    "Portable USB offline mode with zero cloud database storage"
+    "Added authentic dark WhatsApp doodle wallpaper & chat interface simulator",
+    "Fixed message bubble transparent text background",
+    "Added in-app auto-updater with 1-click update installation",
+    "Offline USB data preservation & automated pre-update database backup"
   ],
-  "download_url": "https://github.com/pawanshekhawat/Isolated-CRM/releases/latest",
+  "download_url": "https://github.com/pawanshekhawat/Isolated-CRM/archive/refs/tags/v1.0.1.zip",
   "github_repo": "pawanshekhawat/Isolated-CRM"
 }
