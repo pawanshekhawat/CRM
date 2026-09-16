@@ -186,7 +186,16 @@ FOLDER CONTENTS:
 (RELEASE_FOLDER / "README_PORTABLE.txt").write_text(readme_content, encoding="utf-8")
 
 # 5. Create a clean ZIP archive for sharing
-zip_path = RELEASE_DIR / "PersonalCRM_Portable_v1.0.0.zip"
+app_version = "1.0.0"
+if src_version.exists():
+    try:
+        import json
+        with open(src_version, "r", encoding="utf-8") as f:
+            app_version = json.load(f).get("version", "1.0.0")
+    except Exception:
+        pass
+
+zip_path = RELEASE_DIR / f"PersonalCRM_Portable_v{app_version}.zip"
 print(f"\nCompressing release bundle into {zip_path}...")
 
 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -199,3 +208,4 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
 zip_size_mb = zip_path.stat().st_size / (1024 * 1024)
 print(f"[SUCCESS] Standalone package ready: {zip_path} ({zip_size_mb:.1f} MB)")
 print("========================================================")
+

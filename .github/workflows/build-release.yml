@@ -1,0 +1,81 @@
+name: Build & Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+    paths:
+      - 'config/version.json'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Windows Standalone Executable
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Extract Version & Changelog Metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          $json = Get-Content -Raw -Path "config/version.json" | ConvertFrom-Json
+          $ver = $json.version
+          $tag = "v$ver"
+          $title = if ($json.title) { $json.title } else { "Personal CRM v$ver" }
+          
+          # Format changelog into markdown bullet points
+          $changelogMd = ""
+          if ($json.changelog) {
+              foreach ($item in $json.changelog) {
+                  $changelogMd += "- $item`n"
+              }
+          } else {
+              $changelogMd = "Performance enhancements and stability fixes."
+          }
+
+          Set-Content -Path "$env:RUNNER_TEMP/release_notes.md" -Value $changelogMd
+
+          echo "VERSION=$ver" >> $env:GITHUB_ENV
+          echo "TAG_NAME=$tag" >> $env:GITHUB_ENV
+          echo "TITLE=$title" >> $env:GITHUB_ENV
+
+      - name: Run Build Script (PyInstaller 64-bit)
+        shell: pwsh
+        run: |
+          python build_release.py
+
+      - name: Publish GitHub Release with Compiled Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.TITLE }}
+          body_path: ${{ runner.temp }}/release_notes.md
+          draft: false
+          prerelease: false
+          files: |
+            release/PersonalCRM_Portable/PersonalCRM.exe
+            release/PersonalCRM_Portable_v*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
