@@ -272,6 +272,17 @@ def apply_update_and_restart(update_file_path: str):
         target_exe = Path(sys.executable).resolve()
         helper_bat = TEMP_DIR / "apply_update.bat"
 
+        new_exe_to_copy = update_path.resolve()
+        if update_path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(update_path, "r") as zip_ref:
+                for name in zip_ref.namelist():
+                    if name.endswith("PersonalCRM.exe"):
+                        extracted_exe = TEMP_DIR / "PersonalCRM_New.exe"
+                        with zip_ref.open(name) as src, open(extracted_exe, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
+                        new_exe_to_copy = extracted_exe.resolve()
+                        break
+
         bat_content = f"""@echo off
 title Personal CRM Updater
 echo Updating Personal CRM to latest version...
@@ -279,7 +290,7 @@ echo Waiting for application to exit...
 timeout /t 2 /nobreak > nul
 
 echo Applying update...
-copy /y "{update_path.resolve()}" "{target_exe}" > nul
+copy /y "{new_exe_to_copy}" "{target_exe}" > nul
 if errorlevel 1 (
     echo [ERROR] Update copy failed.
     pause
@@ -287,7 +298,8 @@ if errorlevel 1 (
 )
 
 echo Cleaning up temporary update file...
-del /f /q "{update_path.resolve()}" > nul
+del /f /q "{new_exe_to_copy}" > nul
+del /f /q "{update_path.resolve()}" > nul 2>nul
 
 echo Restarting Personal CRM...
 start "" "{target_exe}"
