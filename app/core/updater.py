@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -27,7 +28,7 @@ from app.core.config import (
 
 logger = logging.getLogger("CRM.Updater")
 
-GITHUB_REPO = "pawanshekhawat/Isolated-CRM"
+GITHUB_REPO = "pawanshekhawat/CRM"
 MANIFEST_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/config/version.json"
 GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -115,7 +116,8 @@ def fetch_update_info(timeout: int = 6) -> UpdateInfo:
 
     # 1. First attempt: Raw GitHub version.json manifest (lightweight & no rate limit)
     try:
-        req = urllib.request.Request(MANIFEST_RAW_URL, headers=headers)
+        manifest_url = f"{MANIFEST_RAW_URL}?t={int(time.time())}"
+        req = urllib.request.Request(manifest_url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as response:
             if response.status == 200:
                 raw_data = response.read().decode("utf-8")

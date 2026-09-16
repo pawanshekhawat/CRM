@@ -9,6 +9,6 @@
     "Added in-app auto-updater with 1-click update installation",
     "Offline USB data preservation & automated pre-update database backup"
   ],
-  "download_url": "https://github.com/pawanshekhawat/Isolated-CRM/archive/refs/tags/v1.0.1.zip",
-  "github_repo": "pawanshekhawat/Isolated-CRM"
+  "download_url": "https://github.com/pawanshekhawat/CRM/archive/refs/tags/v1.0.1.zip",
+  "github_repo": "pawanshekhawat/CRM"
 }
