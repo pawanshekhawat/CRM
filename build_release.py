@@ -162,7 +162,7 @@ if src_version.exists():
 
 # 4. Create README for end users
 readme_content = """========================================================================
-PERSONAL CRM - INSTITUTE EDITION (PORTABLE STANDALONE RELEASE)
+ISOLATED CRM (PORTABLE DESKTOP EDITION)
 ========================================================================
 
 HOW TO RUN:
