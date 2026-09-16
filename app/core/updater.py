@@ -152,12 +152,16 @@ def fetch_update_info(timeout: int = 6) -> UpdateInfo:
                 lines = [line.strip().lstrip("-*# ").strip() for line in body_text.splitlines() if line.strip()]
                 update_info.changelog = lines if lines else ["Performance optimizations and bug fixes."]
 
-                # Check for downloadable assets
+                # Check for downloadable assets or fallback to source archive zip
                 assets = rel.get("assets", [])
                 if assets:
-                    update_info.download_url = assets[0].get("browser_download_url", update_info.download_url)
+                    update_info.download_url = assets[0].get("browser_download_url", "")
                     update_info.file_name = assets[0].get("name", "")
                     update_info.file_size_bytes = assets[0].get("size", 0)
+                
+                if not update_info.download_url or not update_info.download_url.endswith((".zip", ".exe")):
+                    update_info.download_url = f"https://github.com/{GITHUB_REPO}/archive/refs/tags/{tag_name}.zip" if tag_name else f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip"
+                    update_info.file_name = f"PersonalCRM_v{latest_v}.zip"
 
                 update_info.is_update_available = compare_versions(APP_VERSION, latest_v) > 0
                 logger.info(f"Update check (Releases API): Current={APP_VERSION}, Latest={latest_v}, Available={update_info.is_update_available}")
@@ -175,6 +179,11 @@ def fetch_update_info(timeout: int = 6) -> UpdateInfo:
                 update_info.changelog = data.get("changelog", [])
         except Exception:
             pass
+
+    # Ensure download_url has a direct archive fallback if missing
+    if not update_info.download_url or not update_info.download_url.endswith((".zip", ".exe")):
+        update_info.download_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip"
+        update_info.file_name = f"PersonalCRM_v{update_info.latest_version}.zip"
 
     return update_info
 
@@ -245,7 +254,7 @@ class UpdateDownloadWorker(QThread):
 
 def apply_update_and_restart(update_file_path: str):
     """
-    Safely installs downloaded update files and restarts the application.
+    Safely installs downloaded update files and restarts the application in-place.
     STRICT RULE: The data/ folder (crm.db, photos) is 100% PRESERVED and NEVER overwritten.
     """
     create_pre_update_backup()
@@ -299,13 +308,38 @@ exit
         if update_path.suffix.lower() == ".zip":
             with zipfile.ZipFile(update_path, "r") as zip_ref:
                 for member in zip_ref.namelist():
-                    # Strictly avoid overwriting data or local backups
                     norm_name = member.replace("\\", "/").strip("/")
-                    if norm_name.startswith("data/") or norm_name == "data":
+                    parts = norm_name.split("/")
+
+                    # If files are wrapped in a top-level directory like 'Isolated-CRM-main/'
+                    if len(parts) > 1 and ("Isolated-CRM" in parts[0] or parts[0].endswith("-main") or parts[0].startswith("v")):
+                        rel_parts = parts[1:]
+                    else:
+                        rel_parts = parts
+
+                    if not rel_parts or not rel_parts[0]:
                         continue
-                    if norm_name.startswith("logs/") or norm_name == "logs":
+
+                    rel_path_str = "/".join(rel_parts)
+
+                    # Strictly protect data/, logs/, backups/, and .git/
+                    if (
+                        rel_path_str.startswith("data/")
+                        or rel_path_str.startswith("logs/")
+                        or rel_path_str.startswith("backups/")
+                        or rel_path_str.startswith(".git/")
+                        or rel_path_str in ("data", "logs", "backups", ".git")
+                    ):
                         continue
-                    zip_ref.extract(member, ROOT_DIR)
+
+                    target_dest = ROOT_DIR / Path(*rel_parts)
+                    if member.endswith("/"):
+                        target_dest.mkdir(parents=True, exist_ok=True)
+                    else:
+                        target_dest.parent.mkdir(parents=True, exist_ok=True)
+                        with zip_ref.open(member) as source, open(target_dest, "wb") as target:
+                            shutil.copyfileobj(source, target)
+
             logger.info("Extracted update files over source directory successfully.")
             update_path.unlink(missing_ok=True)
 
