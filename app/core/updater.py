@@ -108,6 +108,7 @@ def fetch_update_info(timeout: int = 6) -> UpdateInfo:
     Does NOT throw unhandled network exceptions; returns UpdateInfo with is_update_available=False on error.
     """
     update_info = UpdateInfo(current_version=APP_VERSION)
+    is_frozen = getattr(sys, "frozen", False)
 
     headers = {
         "User-Agent": f"PersonalCRM-Updater/{APP_VERSION}",
@@ -127,8 +128,16 @@ def fetch_update_info(timeout: int = 6) -> UpdateInfo:
                 update_info.title = manifest.get("title", f"Version {latest_v}")
                 update_info.changelog = manifest.get("changelog", [])
                 update_info.release_date = manifest.get("release_date", "")
-                update_info.download_url = manifest.get("download_url", "")
                 update_info.github_repo = manifest.get("github_repo", GITHUB_REPO)
+
+                if is_frozen:
+                    exe_url = manifest.get("exe_download_url") or f"https://github.com/{GITHUB_REPO}/releases/download/v{latest_v}/PersonalCRM.exe"
+                    update_info.download_url = exe_url
+                    update_info.file_name = "PersonalCRM.exe"
+                else:
+                    update_info.download_url = manifest.get("download_url", f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip")
+                    update_info.file_name = f"PersonalCRM_v{latest_v}.zip"
+
                 update_info.is_update_available = compare_versions(APP_VERSION, latest_v) > 0
                 logger.info(f"Update check (manifest): Current={APP_VERSION}, Latest={latest_v}, Available={update_info.is_update_available}")
                 return update_info
@@ -154,16 +163,31 @@ def fetch_update_info(timeout: int = 6) -> UpdateInfo:
                 lines = [line.strip().lstrip("-*# ").strip() for line in body_text.splitlines() if line.strip()]
                 update_info.changelog = lines if lines else ["Performance optimizations and bug fixes."]
 
-                # Check for downloadable assets or fallback to source archive zip
+                # Check for downloadable binary assets
                 assets = rel.get("assets", [])
                 if assets:
-                    update_info.download_url = assets[0].get("browser_download_url", "")
-                    update_info.file_name = assets[0].get("name", "")
-                    update_info.file_size_bytes = assets[0].get("size", 0)
+                    if is_frozen:
+                        # Prioritize .exe or portable zip assets
+                        exe_assets = [
+                            a for a in assets
+                            if a.get("name", "").lower().endswith(".exe") or "portable" in a.get("name", "").lower()
+                        ]
+                        if exe_assets:
+                            update_info.download_url = exe_assets[0].get("browser_download_url", "")
+                            update_info.file_name = exe_assets[0].get("name", "")
+                            update_info.file_size_bytes = exe_assets[0].get("size", 0)
+                    if not update_info.download_url or update_info.download_url.endswith("/releases"):
+                        update_info.download_url = assets[0].get("browser_download_url", "")
+                        update_info.file_name = assets[0].get("name", "")
+                        update_info.file_size_bytes = assets[0].get("size", 0)
                 
                 if not update_info.download_url or not update_info.download_url.endswith((".zip", ".exe")):
-                    update_info.download_url = f"https://github.com/{GITHUB_REPO}/archive/refs/tags/{tag_name}.zip" if tag_name else f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip"
-                    update_info.file_name = f"PersonalCRM_v{latest_v}.zip"
+                    if is_frozen:
+                        update_info.download_url = f"https://github.com/{GITHUB_REPO}/releases/download/v{latest_v}/PersonalCRM.exe"
+                        update_info.file_name = "PersonalCRM.exe"
+                    else:
+                        update_info.download_url = f"https://github.com/{GITHUB_REPO}/archive/refs/tags/{tag_name}.zip" if tag_name else f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip"
+                        update_info.file_name = f"PersonalCRM_v{latest_v}.zip"
 
                 update_info.is_update_available = compare_versions(APP_VERSION, latest_v) > 0
                 logger.info(f"Update check (Releases API): Current={APP_VERSION}, Latest={latest_v}, Available={update_info.is_update_available}")
@@ -182,10 +206,14 @@ def fetch_update_info(timeout: int = 6) -> UpdateInfo:
         except Exception:
             pass
 
-    # Ensure download_url has a direct archive fallback if missing
-    if not update_info.download_url or not update_info.download_url.endswith((".zip", ".exe")):
-        update_info.download_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip"
-        update_info.file_name = f"PersonalCRM_v{update_info.latest_version}.zip"
+    # Ensure download_url has fallback
+    if not update_info.download_url:
+        if is_frozen:
+            update_info.download_url = f"https://github.com/{GITHUB_REPO}/releases/latest"
+            update_info.file_name = "PersonalCRM.exe"
+        else:
+            update_info.download_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip"
+            update_info.file_name = f"PersonalCRM_v{update_info.latest_version}.zip"
 
     return update_info
 
@@ -232,7 +260,7 @@ class UpdateDownloadWorker(QThread):
             }
             req = urllib.request.Request(self.download_url, headers=headers)
 
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=45) as response:
                 total_size = int(response.headers.get("Content-Length", 0))
                 downloaded = 0
                 chunk_size = 1024 * 64  # 64 KB chunks
@@ -272,16 +300,50 @@ def apply_update_and_restart(update_file_path: str):
         target_exe = Path(sys.executable).resolve()
         helper_bat = TEMP_DIR / "apply_update.bat"
 
-        new_exe_to_copy = update_path.resolve()
-        if update_path.suffix.lower() == ".zip":
+        extracted_exe: Optional[Path] = None
+
+        if update_path.suffix.lower() == ".exe":
+            extracted_exe = update_path.resolve()
+        elif update_path.suffix.lower() == ".zip":
             with zipfile.ZipFile(update_path, "r") as zip_ref:
                 for name in zip_ref.namelist():
-                    if name.endswith("PersonalCRM.exe"):
-                        extracted_exe = TEMP_DIR / "PersonalCRM_New.exe"
-                        with zip_ref.open(name) as src, open(extracted_exe, "wb") as dst:
+                    if name.endswith("PersonalCRM.exe") or name.lower() == "personalcrm.exe":
+                        temp_exe = (TEMP_DIR / "PersonalCRM_New.exe").resolve()
+                        with zip_ref.open(name) as src, open(temp_exe, "wb") as dst:
                             shutil.copyfileobj(src, dst)
-                        new_exe_to_copy = extracted_exe.resolve()
+                        extracted_exe = temp_exe
                         break
+
+                # Also extract updated config/version.json if present
+                for name in zip_ref.namelist():
+                    norm = name.replace("\\", "/").strip("/")
+                    if norm.endswith("version.json"):
+                        dest_cfg = CONFIG_DIR / "version.json"
+                        with zip_ref.open(name) as src, open(dest_cfg, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
+                        break
+
+        # STRICT VERIFICATION: Ensure the candidate is an actual valid Windows executable
+        if not extracted_exe or not extracted_exe.exists():
+            raise ValueError(
+                "The downloaded update package does not contain a compiled 'PersonalCRM.exe'.\n\n"
+                "To update the standalone portable app, please ensure the GitHub release "
+                "contains the compiled 'PersonalCRM.exe' or 'PersonalCRM_Portable.zip' asset.\n\n"
+                "Your local database and files have not been modified."
+            )
+
+        try:
+            with open(extracted_exe, "rb") as f:
+                header = f.read(2)
+            if header != b"MZ":
+                raise ValueError(
+                    f"Downloaded file is not a valid 64-bit Windows executable.\n\n"
+                    "Aborting update to prevent file corruption. Your database and student data are 100% safe."
+                )
+        except Exception as e:
+            raise ValueError(f"Executable validation failed: {e}")
+
+        new_exe_to_copy = extracted_exe.resolve()
 
         bat_content = f"""@echo off
 title Personal CRM Updater
@@ -292,13 +354,13 @@ timeout /t 2 /nobreak > nul
 echo Applying update...
 copy /y "{new_exe_to_copy}" "{target_exe}" > nul
 if errorlevel 1 (
-    echo [ERROR] Update copy failed.
+    echo [ERROR] Update copy failed. File may be locked by another process.
     pause
     exit /b 1
 )
 
 echo Cleaning up temporary update file...
-del /f /q "{new_exe_to_copy}" > nul
+del /f /q "{new_exe_to_copy}" > nul 2>nul
 del /f /q "{update_path.resolve()}" > nul 2>nul
 
 echo Restarting Personal CRM...
@@ -325,8 +387,8 @@ exit
                     norm_name = member.replace("\\", "/").strip("/")
                     parts = norm_name.split("/")
 
-                    # If files are wrapped in a top-level directory like 'Isolated-CRM-main/'
-                    if len(parts) > 1 and ("Isolated-CRM" in parts[0] or parts[0].endswith("-main") or parts[0].startswith("v")):
+                    # If files are wrapped in a top-level directory like 'CRM-main/' or 'Isolated-CRM-main/'
+                    if len(parts) > 1 and ("CRM" in parts[0] or parts[0].endswith("-main") or parts[0].startswith("v")):
                         rel_parts = parts[1:]
                     else:
                         rel_parts = parts
@@ -364,3 +426,4 @@ exit
         else:
             subprocess.Popen([sys.executable, str(ROOT_DIR / "app" / "main.py")], cwd=str(ROOT_DIR))
         sys.exit(0)
+

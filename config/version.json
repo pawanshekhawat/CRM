@@ -10,5 +10,7 @@
     "Offline USB data preservation & automated pre-update database backup"
   ],
   "download_url": "https://github.com/pawanshekhawat/CRM/archive/refs/heads/main.zip",
+  "exe_download_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.1/PersonalCRM.exe",
+  "portable_zip_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.1/PersonalCRM_Portable_v1.0.1.zip",
   "github_repo": "pawanshekhawat/CRM"
 }
