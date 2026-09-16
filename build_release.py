@@ -23,9 +23,11 @@ HIDDEN_IMPORTS = [
     "app.core.config",
     "app.core.database",
     "app.core.signals",
+    "app.core.updater",
     # Models
     "app.models.course",
     "app.models.custom_fields",
+    "app.models.message_template",
     "app.models.staff",
     "app.models.student",
     # Modules
@@ -52,12 +54,19 @@ HIDDEN_IMPORTS = [
     "app.modules.students.views.student_detail_view",
     "app.modules.students.views.student_form_dialog",
     "app.modules.students.views.student_list_view",
+    # Messaging
+    "app.modules.messaging.controllers",
+    "app.modules.messaging.messaging_module",
+    "app.modules.messaging.views.messaging_view",
+    "app.modules.messaging.views.dispatch_queue_dialog",
+    "app.modules.messaging.views.template_editor_dialog",
     # UI
     "app.ui.theme",
     "app.ui.widgets.dynamic_fields",
     "app.ui.widgets.form_image_viewer",
     "app.ui.widgets.search_bar",
     "app.ui.widgets.stat_card",
+    "app.ui.widgets.update_dialog",
     # Third-party
     "sqlalchemy.dialects.sqlite",
     "reportlab",
@@ -88,6 +97,11 @@ cmd = [
     "--paths",
     str(ROOT_DIR),
 ]
+
+# Add assets directory if it exists
+messaging_assets = ROOT_DIR / "app" / "modules" / "messaging" / "assets"
+if messaging_assets.exists():
+    cmd.extend(["--add-data", f"{messaging_assets};app/modules/messaging/assets"])
 
 for imp in HIDDEN_IMPORTS:
     cmd.extend(["--hidden-import", imp])
@@ -120,7 +134,7 @@ if RELEASE_FOLDER.exists():
     shutil.rmtree(RELEASE_FOLDER)
 RELEASE_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# 1. Copy the single .exe into the release folder and root
+# 1. Copy the single .exe into the release folder
 shutil.copy2(ONEFILE_EXE, RELEASE_FOLDER / "PersonalCRM.exe")
 
 # 2. Copy data directory
@@ -140,7 +154,11 @@ if src_data.exists():
 
 # 3. Ensure logs and config directories exist
 (RELEASE_FOLDER / "logs").mkdir(parents=True, exist_ok=True)
-(RELEASE_FOLDER / "config").mkdir(parents=True, exist_ok=True)
+dest_config = RELEASE_FOLDER / "config"
+dest_config.mkdir(parents=True, exist_ok=True)
+src_version = ROOT_DIR / "config" / "version.json"
+if src_version.exists():
+    shutil.copy2(src_version, dest_config / "version.json")
 
 # 4. Create README for end users
 readme_content = """========================================================================
@@ -153,15 +171,16 @@ HOW TO RUN:
 
 PORTABILITY & DATA PRIVACY:
 - All database records, student details, course catalogs, fee records,
-  and image attachments stay strictly inside the 'data/' folder.
-- You can copy this entire folder to any USB flash drive or Windows PC.
-- No Python installation, pip dependencies, or setup required.
+  and image attachments stay strictly inside the 'data/' folder on this drive.
+- No database data is stored in the cloud.
+- Built-in In-App Updates: When updates are published, click 'Check for Updates'
+  inside the app to automatically update in-place without losing your data!
 
 FOLDER CONTENTS:
 - PersonalCRM.exe       : Standalone application executable (Single-file)
 - data/                 : Local SQLite database & attachment photos
 - logs/                 : Application operation logs
-- config/               : Institute settings & custom configurations
+- config/               : Institute settings & version metadata
 ========================================================================
 """
 (RELEASE_FOLDER / "README_PORTABLE.txt").write_text(readme_content, encoding="utf-8")
