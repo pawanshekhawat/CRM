@@ -6,6 +6,8 @@ on:
       - 'v*'
     branches:
       - main
+    paths:
+      - 'config/version.json'
   workflow_dispatch:
 
 permissions:
