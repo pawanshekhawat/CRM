@@ -349,43 +349,29 @@ def apply_update_and_restart(update_file_path: str):
         bat_content = f"""@echo off
 title Personal CRM Updater
 echo ===================================================
-echo Updating Personal CRM to latest version...
+echo Applying Personal CRM Update...
 echo ===================================================
 
-:: Ensure the previous process terminates and releases handles
+:: Ensure application process exits
 taskkill /F /PID {current_pid} > nul 2>&1
+timeout /t 2 /nobreak > nul
 
-:: Retry loop to safely replace PersonalCRM.exe
-set RETRY_COUNT=0
-:RETRY_LOOP
-timeout /t 1 /nobreak > nul
-
-:: Attempt rename first (Windows allows renaming running/terminating executables)
+:: Replace PersonalCRM.exe
 if exist "{target_exe}.old" del /f /q "{target_exe}.old" > nul 2>&1
 move /y "{target_exe}" "{target_exe}.old" > nul 2>&1
-
 copy /y "{new_exe_to_copy}" "{target_exe}" > nul 2>&1
-if not errorlevel 1 goto COPY_SUCCESS
 
-set /a RETRY_COUNT+=1
-if %RETRY_COUNT% LSS 12 (
-    echo Waiting for application process to release file lock (Attempt %RETRY_COUNT%/12)...
-    goto RETRY_LOOP
-)
-
-echo [ERROR] Update copy failed after multiple attempts.
-echo Please close any open instances of Personal CRM and try again.
-pause
-exit /b 1
-
-:COPY_SUCCESS
-echo [SUCCESS] Personal CRM updated successfully!
+:: Clean up temporary update files
 del /f /q "{target_exe}.old" > nul 2>&1
 del /f /q "{new_exe_to_copy}" > nul 2>&1
 del /f /q "{update_path.resolve()}" > nul 2>&1
 
-echo Restarting Personal CRM...
-start /I "" "{target_exe}"
+echo.
+echo ===================================================
+echo [SUCCESS] Personal CRM has been updated!
+echo You can now double-click PersonalCRM.exe to launch.
+echo ===================================================
+timeout /t 2 > nul
 del "%~f0"
 exit
 """
@@ -401,24 +387,14 @@ exit
         except Exception:
             pass
 
-        # Prepare clean environment dictionary without PyInstaller internal flags
-        clean_env = os.environ.copy()
-        for k in list(clean_env.keys()):
-            if k.startswith("_PYI_") or k.startswith("_MEIPASS"):
-                del clean_env[k]
-
         # Launch detached updater script
-        flags = 0
-        if os.name == "nt":
-            flags = subprocess.CREATE_NEW_CONSOLE | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
-
         subprocess.Popen(
             ["cmd.exe", "/c", str(helper_bat)],
-            creationflags=flags,
+            creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0,
             close_fds=True,
-            env=clean_env,
         )
         os._exit(0)
+
 
 
 

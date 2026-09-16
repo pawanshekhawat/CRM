@@ -324,28 +324,25 @@ class UpdateDialog(QDialog):
 
     def _on_download_finished(self, file_path: str):
         self.downloaded_file_path = file_path
-        self.progress_lbl.setText("✅ Download completed. Applying update and restarting...")
+        self.progress_lbl.setText("✅ Download completed!")
         self.progress_bar.setValue(100)
 
-        reply = QMessageBox.question(
+        QMessageBox.information(
             self,
-            "Install Update & Restart",
-            f"Update package is ready!\n\n"
-            f"The application will now safely back up your database and restart to apply v{self.update_info.latest_version}.\n\n"
-            f"Do you want to proceed with the restart?",
-            QMessageBox.Yes | QMessageBox.No,
+            "Update Ready to Install",
+            f"🎉 Update to v{self.update_info.latest_version} has downloaded successfully!\n\n"
+            f"Click OK to close the application and apply the update.\n"
+            f"Then simply double-click 'PersonalCRM.exe' on your pen drive to open the updated version.\n\n"
+            f"🔒 All student records, fees, and photo attachments remain 100% safe on your drive.",
         )
 
-        if reply == QMessageBox.Yes:
-            try:
-                apply_update_and_restart(file_path)
-            except Exception as e:
-                QMessageBox.critical(self, "Update Installation Error", f"Failed to install update: {e}")
-                self.update_btn.setEnabled(True)
-                self.update_btn.setText("Retry Update")
-        else:
+        try:
+            apply_update_and_restart(file_path)
+        except Exception as e:
+            QMessageBox.critical(self, "Update Installation Error", f"Failed to apply update: {e}")
             self.update_btn.setEnabled(True)
-            self.update_btn.setText("Apply Update")
+            self.update_btn.setText("Retry Update")
+
 
     def _on_download_failed(self, error_msg: str):
         self.progress_container.setVisible(False)
