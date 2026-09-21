@@ -29,7 +29,7 @@ DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
 
 # App Information
 APP_NAME = "Personal CRM - Institute Edition"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 ORGANIZATION_NAME = "CADDESK Centre"
 
 def init_directories():

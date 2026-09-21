@@ -326,6 +326,19 @@ def test_student_sorting_by_name_course_status():
         status_order_map = {"Active": 1, "Completed": 2, "Dropout": 3}
         status_ranks = [status_order_map.get(s.status, 4) for s in by_status]
         assert status_ranks == sorted(status_ranks)
+
+        # 5. Test Sort by Fee Date (Recent first)
+        by_fee_desc = StudentController.get_all_students(sort_by="fee_date_desc")
+        assert len(by_fee_desc) >= 2
+
+        # 6. Test Sort by Fee Date (Oldest first)
+        by_fee_asc = StudentController.get_all_students(sort_by="fee_date_asc")
+        assert len(by_fee_asc) >= 2
+
+        # 7. Test Sort by Balance Due (High to low)
+        by_due_desc = StudentController.get_all_students(sort_by="due_desc")
+        dues = [s.balance_due for s in by_due_desc]
+        assert dues == sorted(dues, reverse=True)
     finally:
         StudentController.delete_student(s1.id)
         StudentController.delete_student(s2.id)

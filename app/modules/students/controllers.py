@@ -36,7 +36,10 @@ class StudentController:
             )
 
             if status_filter and status_filter != "All" and status_filter != "All Status":
-                query = query.filter(Student.status == status_filter)
+                if status_filter in ("Dropped", "Dropout"):
+                    query = query.filter(Student.status.in_(["Dropout", "Dropped"]))
+                else:
+                    query = query.filter(Student.status == status_filter)
 
             if course_filter and course_filter != "All":
                 query = query.filter(Student.course_name.ilike(f"%{course_filter}%"))
@@ -64,8 +67,24 @@ class StudentController:
                     query = query.order_by(Student.name.asc(), Student.id_no.asc())
                 elif "name (z-a)" in s_lower or s_lower in ("name_desc", "z-a"):
                     query = query.order_by(Student.name.desc(), Student.id_no.asc())
+                elif "course_desc" in s_lower:
+                    query = query.order_by(Student.course_name.desc(), Student.name.asc())
                 elif "course" in s_lower:
                     query = query.order_by(Student.course_name.asc(), Student.name.asc())
+                elif "mobile_desc" in s_lower:
+                    query = query.order_by(Student.mobile_no.desc(), Student.id_no.asc())
+                elif "mobile" in s_lower:
+                    query = query.order_by(Student.mobile_no.asc(), Student.id_no.asc())
+                elif "id_desc" in s_lower:
+                    query = query.order_by(Student.id_no.desc())
+                elif "status_desc" in s_lower:
+                    status_order = case(
+                        (Student.status == "Dropout", 1),
+                        (Student.status == "Completed", 2),
+                        (Student.status == "Active", 3),
+                        else_=4,
+                    )
+                    query = query.order_by(status_order.asc(), Student.name.asc())
                 elif "status" in s_lower:
                     # Active first, then Completed, then Dropout
                     status_order = case(
@@ -75,8 +94,10 @@ class StudentController:
                         else_=4,
                     )
                     query = query.order_by(status_order.asc(), Student.name.asc())
-                elif "latest" in s_lower:
+                elif "latest" in s_lower or "admission_desc" in s_lower:
                     query = query.order_by(Student.admission_date.desc(), Student.id_no.desc())
+                elif "admission_asc" in s_lower or "oldest" in s_lower:
+                    query = query.order_by(Student.admission_date.asc(), Student.id_no.asc())
                 else:
                     query = query.order_by(Student.id_no.asc())
             else:
@@ -99,12 +120,22 @@ class StudentController:
             if sort_by:
                 s_lower = sort_by.lower()
                 from datetime import date
-                if "last paid (recent)" in s_lower or "paid (recent)" in s_lower:
-                    students.sort(key=lambda s: s.last_payment_date or date.min, reverse=True)
-                elif "last paid (oldest)" in s_lower or "paid (oldest)" in s_lower:
-                    students.sort(key=lambda s: s.last_payment_date or date.max)
-                elif "fee (pending)" in s_lower or "pending" in s_lower and "sort" in s_lower:
-                    students.sort(key=lambda s: (s.balance_due, s.total_paid), reverse=True)
+                if "fee_date_desc" in s_lower or "last paid (recent)" in s_lower or "paid (recent)" in s_lower or "fee date (recent" in s_lower:
+                    # Most recent payments first. For students without payment, push to bottom.
+                    students.sort(key=lambda s: (s.last_payment_date is not None, s.last_payment_date or date.min), reverse=True)
+                elif "fee_date_asc" in s_lower or "last paid (oldest)" in s_lower or "paid (oldest)" in s_lower or "fee date (oldest" in s_lower or "overdue" in s_lower:
+                    # Oldest payments first. Students with payments come first (ordered oldest to newest), then students with no payments.
+                    students.sort(key=lambda s: (s.last_payment_date is None, s.last_payment_date or date.min))
+                elif "due_desc" in s_lower or "fee (pending)" in s_lower or "balance_desc" in s_lower or ("pending" in s_lower and "sort" in s_lower):
+                    students.sort(key=lambda s: (float(s.balance_due or 0.0), float(s.total_paid or 0.0)), reverse=True)
+                elif "due_asc" in s_lower or "balance_asc" in s_lower or "balance" in s_lower:
+                    students.sort(key=lambda s: (float(s.balance_due or 0.0), float(s.total_paid or 0.0)))
+                elif "name_asc" in s_lower or "name (a-z)" in s_lower or s_lower == "name":
+                    students.sort(key=lambda s: (s.name or "").lower())
+                elif "name_desc" in s_lower or "name (z-a)" in s_lower:
+                    students.sort(key=lambda s: (s.name or "").lower(), reverse=True)
+                elif "admission" in s_lower or "latest" in s_lower:
+                    students.sort(key=lambda s: s.admission_date or date.min, reverse=True)
 
             # Expunge objects so they can be accessed outside session
             session.expunge_all()
@@ -470,6 +501,73 @@ class StudentController:
             student.status = new_status
             session.commit()
             return True
+
+    @staticmethod
+    def record_fee_payment(
+        student_id: str,
+        installment_id: Optional[str] = None,
+        amount_paid: float = 0.0,
+        payment_date: Optional[date] = None,
+        payment_mode: str = "Cash",
+        receipt_no: str = "",
+        remarks: str = "",
+    ) -> Optional[Student]:
+        """Record a fee payment for a student, updating or creating an installment."""
+        payment_date = payment_date or date.today()
+        with get_db_session() as session:
+            student = session.query(Student).filter(Student.id == student_id).first()
+            if not student:
+                return None
+
+            inst = None
+            if installment_id and str(installment_id) != "0":
+                inst = session.query(StudentFeeInstallment).filter(
+                    StudentFeeInstallment.id == str(installment_id),
+                    StudentFeeInstallment.student_id == student_id,
+                ).first()
+
+            if not inst:
+                unpaid_insts = session.query(StudentFeeInstallment).filter(
+                    StudentFeeInstallment.student_id == student_id,
+                    StudentFeeInstallment.paid_amount < StudentFeeInstallment.due_amount,
+                ).order_by(StudentFeeInstallment.installment_no.asc()).all()
+                if unpaid_insts:
+                    inst = unpaid_insts[0]
+
+            if inst:
+                inst.paid_amount = float(inst.paid_amount or 0.0) + float(amount_paid)
+                inst.payment_date = payment_date
+                inst.payment_mode = payment_mode
+                if receipt_no:
+                    inst.transaction_ref = receipt_no
+                if remarks:
+                    inst.remarks = remarks
+                if inst.paid_amount >= inst.due_amount and inst.due_amount > 0:
+                    inst.status = "Paid"
+                elif inst.paid_amount > 0:
+                    inst.status = "Partial"
+            else:
+                existing_count = session.query(func.count(StudentFeeInstallment.id)).filter(
+                    StudentFeeInstallment.student_id == student_id
+                ).scalar() or 0
+                next_no = existing_count + 1
+                inst = StudentFeeInstallment(
+                    student_id=student.id,
+                    installment_no=next_no,
+                    installment_label=f"{next_no}th",
+                    due_amount=float(amount_paid),
+                    paid_amount=float(amount_paid),
+                    payment_date=payment_date,
+                    payment_mode=payment_mode,
+                    transaction_ref=receipt_no,
+                    status="Paid",
+                    remarks=remarks,
+                )
+                session.add(inst)
+
+            session.commit()
+
+        return StudentController.get_student_by_id(student_id)
 
     @staticmethod
     def delete_student(student_id: str) -> bool:

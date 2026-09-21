@@ -89,7 +89,6 @@ class TemplateEditorDialog(QDialog):
             ("{balance_due}", "Balance (₹)"),
             ("{last_paid_date}", "Last Paid Date"),
             ("{days_ago}", "Days Elapsed"),
-            ("{id_no}", "Student ID"),
         ]
         for tag, hint in tag_buttons:
             btn = QPushButton(tag)

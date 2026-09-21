@@ -152,11 +152,35 @@ class CourseController:
     """Business logic and database transactions for the Course Catalog."""
 
     @staticmethod
-    def generate_next_course_code() -> str:
-        """Generates a sequential course code."""
+    def generate_next_course_code(category: Optional[str] = None) -> str:
+        """Generates a sequential course code, optionally based on category."""
         with get_db_session() as session:
             count = session.query(func.count(Course.id)).scalar() or 0
-            return f"CRS-{(count + 1):03d}"
+            prefix = "CRS"
+            if category:
+                cat_lower = category.lower()
+                if "arch" in cat_lower or "civil" in cat_lower:
+                    prefix = "CRS-ARCH"
+                elif "interior" in cat_lower:
+                    prefix = "CRS-INT"
+                elif "data" in cat_lower or "ai" in cat_lower:
+                    prefix = "CRS-DAT"
+                elif "it" in cat_lower or "prog" in cat_lower or "web" in cat_lower or "dev" in cat_lower:
+                    prefix = "CRS-IT"
+                elif "cad" in cat_lower or "draft" in cat_lower:
+                    prefix = "CRS-CAD"
+                elif "market" in cat_lower:
+                    prefix = "CRS-DM"
+                elif "multimedia" in cat_lower or "graphic" in cat_lower:
+                    prefix = "CRS-GD"
+                elif "account" in cat_lower or "finance" in cat_lower or "tally" in cat_lower:
+                    prefix = "CRS-ACC"
+                elif "comp" in cat_lower or "dca" in cat_lower:
+                    prefix = "CRS-DCA"
+                else:
+                    clean_cat = "".join([c for c in category.upper() if c.isalnum()])[:4]
+                    prefix = f"CRS-{clean_cat}" if clean_cat else "CRS"
+            return f"{prefix}-{(count + 1):02d}"
 
     @staticmethod
     def seed_default_courses_if_empty() -> int:

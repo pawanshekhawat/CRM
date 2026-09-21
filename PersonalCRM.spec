@@ -1,12 +1,77 @@
 # -*- mode: python ; coding: utf-8 -*-
+from pathlib import Path
 
+ROOT_DIR = Path('E:\\CRM')
 
 a = Analysis(
     ['E:\\CRM\\app\\main.py'],
     pathex=['E:\\CRM'],
-    binaries=[('C:\\Python314\\python3.dll', '.'), ('C:\\Python314\\python314.dll', '.'), ('C:\\Python314\\vcruntime140.dll', '.'), ('C:\\Python314\\vcruntime140_1.dll', '.'), ('C:\\Python314\\DLLs\\libcrypto-3.dll', '.'), ('C:\\Python314\\DLLs\\libffi-8.dll', '.'), ('C:\\Python314\\DLLs\\libssl-3.dll', '.'), ('C:\\Python314\\DLLs\\sqlite3.dll', '.'), ('C:\\Python314\\DLLs\\tcl86t.dll', '.'), ('C:\\Python314\\DLLs\\tk86t.dll', '.'), ('C:\\Python314\\DLLs\\zlib1.dll', '.')],
-    datas=[('E:\\CRM\\app\\modules\\messaging\\assets', 'app/modules/messaging/assets')],
-    hiddenimports=['app.core.base', 'app.core.config', 'app.core.database', 'app.core.signals', 'app.core.updater', 'app.models.course', 'app.models.custom_fields', 'app.models.message_template', 'app.models.staff', 'app.models.student', 'app.modules.base_module', 'app.modules.registry', 'app.modules.courses.controllers', 'app.modules.courses.course_module', 'app.modules.courses.views.course_form_dialog', 'app.modules.courses.views.course_list_view', 'app.modules.staff.controllers', 'app.modules.staff.staff_module', 'app.modules.staff.views.batch_form_dialog', 'app.modules.staff.views.batch_roster_dialog', 'app.modules.staff.views.staff_detail_dialog', 'app.modules.staff.views.staff_form_dialog', 'app.modules.staff.views.staff_list_view', 'app.modules.students.controllers', 'app.modules.students.reports', 'app.modules.students.student_module', 'app.modules.students.views.custom_fields_dialog', 'app.modules.students.views.student_detail_view', 'app.modules.students.views.student_form_dialog', 'app.modules.students.views.student_list_view', 'app.modules.messaging.controllers', 'app.modules.messaging.messaging_module', 'app.modules.messaging.views.messaging_view', 'app.modules.messaging.views.dispatch_queue_dialog', 'app.modules.messaging.views.template_editor_dialog', 'app.ui.theme', 'app.ui.widgets.dynamic_fields', 'app.ui.widgets.form_image_viewer', 'app.ui.widgets.search_bar', 'app.ui.widgets.stat_card', 'app.ui.widgets.update_dialog', 'sqlalchemy.dialects.sqlite', 'reportlab', 'reportlab.lib.pagesizes', 'reportlab.platypus', 'reportlab.lib.styles', 'reportlab.lib.colors', 'openpyxl', 'PIL', 'PIL.Image', 'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets', 'PySide6.QtPrintSupport'],
+    binaries=[
+        ('C:\\Python314\\python3.dll', '.'),
+        ('C:\\Python314\\python314.dll', '.'),
+        ('C:\\Python314\\vcruntime140.dll', '.'),
+        ('C:\\Python314\\vcruntime140_1.dll', '.'),
+        ('C:\\Python314\\DLLs\\libcrypto-3.dll', '.'),
+        ('C:\\Python314\\DLLs\\libffi-8.dll', '.'),
+        ('C:\\Python314\\DLLs\\libssl-3.dll', '.'),
+        ('C:\\Python314\\DLLs\\sqlite3.dll', '.'),
+        ('C:\\Python314\\DLLs\\tcl86t.dll', '.'),
+        ('C:\\Python314\\DLLs\\tk86t.dll', '.'),
+        ('C:\\Python314\\DLLs\\zlib1.dll', '.'),
+    ],
+    datas=[
+        ('E:\\CRM\\ui', 'ui'),
+        ('E:\\CRM\\app\\modules\\messaging\\assets', 'app/modules/messaging/assets'),
+    ],
+    hiddenimports=[
+        # Core
+        'app.core.base',
+        'app.core.config',
+        'app.core.database',
+        'app.core.signals',
+        'app.core.updater',
+        # Models
+        'app.models.course',
+        'app.models.custom_fields',
+        'app.models.message_template',
+        'app.models.staff',
+        'app.models.student',
+        # Controllers & Services
+        'app.modules.courses.controllers',
+        'app.modules.staff.controllers',
+        'app.modules.students.controllers',
+        'app.modules.students.reports',
+        'app.modules.messaging.controllers',
+        # Bridge
+        'app.bridge',
+        'app.bridge.crm_bridge',
+        'app.bridge.students_bridge',
+        'app.bridge.courses_bridge',
+        'app.bridge.staff_bridge',
+        'app.bridge.finance_bridge',
+        'app.bridge.messaging_bridge',
+        'app.bridge.reports_bridge',
+        'app.bridge.updater_bridge',
+        # PySide6 Qt Quick / QML
+        'PySide6.QtQml',
+        'PySide6.QtQuick',
+        'PySide6.QtQuickControls2',
+        'PySide6.QtQuickLayouts',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
+        'PySide6.QtPrintSupport',
+        # Third-party
+        'sqlalchemy.dialects.sqlite',
+        'reportlab',
+        'reportlab.lib.pagesizes',
+        'reportlab.platypus',
+        'reportlab.lib.styles',
+        'reportlab.lib.colors',
+        'openpyxl',
+        'PIL',
+        'PIL.Image',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

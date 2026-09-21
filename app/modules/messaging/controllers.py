@@ -38,8 +38,8 @@ DEFAULT_TEMPLATES = [
         "is_default": True,
         "sort_order": 3,
         "content": (
-            "{Welcome to CADDESK|Warm Greetings from CADDESK Centre} {name}! We are pleased to confirm your admission for {course} "
-            "(Student ID: {id_no}). Your classes and batch details will be shared shortly. Feel free to contact us for any assistance."
+            "{Welcome to CADDESK|Warm Greetings from CADDESK Centre} {name}! We are pleased to confirm your admission for {course}. "
+            "Your classes and batch details will be shared shortly. Feel free to contact us for any assistance."
         ),
     },
     {
@@ -73,12 +73,9 @@ class MessageController:
     @staticmethod
     def get_all_templates() -> List[MessageTemplate]:
         """Fetch all message templates ordered by sort_order and title."""
+        MessageController.seed_default_templates()
         with get_db_session() as session:
             templates = session.query(MessageTemplate).order_by(MessageTemplate.sort_order.asc(), MessageTemplate.title.asc()).all()
-            if not templates:
-                # Seed defaults if table is empty
-                MessageController.seed_default_templates()
-                templates = session.query(MessageTemplate).order_by(MessageTemplate.sort_order.asc(), MessageTemplate.title.asc()).all()
             session.expunge_all()
             return templates
 
@@ -142,22 +139,38 @@ class MessageController:
 
     @staticmethod
     def seed_default_templates():
-        """Populate initial standard CADDESK templates if empty."""
+        """Populate initial standard CADDESK templates or sanitize existing templates to remove student ID."""
         with get_db_session() as session:
             existing_count = session.query(MessageTemplate).count()
-            if existing_count > 0:
-                return
-            for item in DEFAULT_TEMPLATES:
-                tmpl = MessageTemplate(
-                    title=item["title"],
-                    category=item["category"],
-                    content=item["content"],
-                    is_default=item["is_default"],
-                    sort_order=item["sort_order"],
-                )
-                session.add(tmpl)
-            session.commit()
-            logger.info("Seeded default WhatsApp message templates.")
+            if existing_count == 0:
+                for item in DEFAULT_TEMPLATES:
+                    tmpl = MessageTemplate(
+                        title=item["title"],
+                        category=item["category"],
+                        content=item["content"],
+                        is_default=item["is_default"],
+                        sort_order=item["sort_order"],
+                    )
+                    session.add(tmpl)
+                session.commit()
+                logger.info("Seeded default WhatsApp message templates.")
+            else:
+                # Sanitize existing templates to remove student ID references if present
+                updated = False
+                for tmpl in session.query(MessageTemplate).all():
+                    if tmpl.content and ("{id_no}" in tmpl.content or "Student ID:" in tmpl.content):
+                        cleaned = tmpl.content
+                        cleaned = cleaned.replace(" (Student ID: {id_no})", "")
+                        cleaned = cleaned.replace("(Student ID: {id_no})", "")
+                        cleaned = cleaned.replace(" Student ID: {id_no}.", "")
+                        cleaned = cleaned.replace("Student ID: {id_no}.", "")
+                        cleaned = cleaned.replace(" {id_no}", "")
+                        cleaned = cleaned.replace("{id_no}", "")
+                        tmpl.content = cleaned
+                        updated = True
+                if updated:
+                    session.commit()
+                    logger.info("Sanitized existing templates to remove student ID references.")
 
     @staticmethod
     def resolve_spintax(text: str) -> str:

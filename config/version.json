@@ -1,19 +1,20 @@
 {
-  "version": "1.0.3",
-  "release_date": "2026-09-16",
-  "title": "Isolated CRM v1.0.3 - Self-Contained Standalone Executable & Auto-Updater",
+  "version": "1.0.4",
+  "release_date": "2026-09-21",
+  "title": "Personal CRM v1.0.4 - Interactive Status Switching, Fee Date Sorting & Qt Quick Architecture",
   "min_supported_version": "1.0.0",
   "changelog": [
-    "Fully self-contained 64-bit Windows binary with bundled VC runtime libraries",
-    "Fixed PyInstaller environment inheritance on auto-restart",
-    "Added automated GitHub Actions in-app update pipeline",
-    "Added 64-bit Windows PE binary validation before applying updates",
-    "Added authentic dark WhatsApp doodle wallpaper & chat interface simulator",
-    "100% Offline USB data preservation & automated pre-update database backup"
+    "Interactive Status dropdown in student table and profile (Active, Completed, Dropout)",
+    "Fee Date and multi-column sorting via clickable table headers and toolbar dropdown",
+    "Modern Qt Quick / QML Architecture with smooth animations and dark theme design tokens",
+    "Physical scanned admission form viewer with zoom controls",
+    "Continuous scrolling through all students with instant search and multi-filters",
+    "Direct WhatsApp message automation integration with custom template rendering",
+    "100% Offline USB data preservation and automated pre-update database backups"
   ],
   "download_url": "https://github.com/pawanshekhawat/CRM/archive/refs/heads/main.zip",
-  "exe_download_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.3/PersonalCRM.exe",
-  "portable_zip_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.3/PersonalCRM_Portable_v1.0.3.zip",
+  "exe_download_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.4/PersonalCRM.exe",
+  "portable_zip_url": "https://github.com/pawanshekhawat/CRM/releases/download/v1.0.4/PersonalCRM_Portable_v1.0.4.zip",
   "github_repo": "pawanshekhawat/CRM"
 }
 

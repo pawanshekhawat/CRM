@@ -30,43 +30,31 @@ HIDDEN_IMPORTS = [
     "app.models.message_template",
     "app.models.staff",
     "app.models.student",
-    # Modules
-    "app.modules.base_module",
-    "app.modules.registry",
-    # Courses
+    # Controllers & Services
     "app.modules.courses.controllers",
-    "app.modules.courses.course_module",
-    "app.modules.courses.views.course_form_dialog",
-    "app.modules.courses.views.course_list_view",
-    # Staff
     "app.modules.staff.controllers",
-    "app.modules.staff.staff_module",
-    "app.modules.staff.views.batch_form_dialog",
-    "app.modules.staff.views.batch_roster_dialog",
-    "app.modules.staff.views.staff_detail_dialog",
-    "app.modules.staff.views.staff_form_dialog",
-    "app.modules.staff.views.staff_list_view",
-    # Students
     "app.modules.students.controllers",
     "app.modules.students.reports",
-    "app.modules.students.student_module",
-    "app.modules.students.views.custom_fields_dialog",
-    "app.modules.students.views.student_detail_view",
-    "app.modules.students.views.student_form_dialog",
-    "app.modules.students.views.student_list_view",
-    # Messaging
     "app.modules.messaging.controllers",
-    "app.modules.messaging.messaging_module",
-    "app.modules.messaging.views.messaging_view",
-    "app.modules.messaging.views.dispatch_queue_dialog",
-    "app.modules.messaging.views.template_editor_dialog",
-    # UI
-    "app.ui.theme",
-    "app.ui.widgets.dynamic_fields",
-    "app.ui.widgets.form_image_viewer",
-    "app.ui.widgets.search_bar",
-    "app.ui.widgets.stat_card",
-    "app.ui.widgets.update_dialog",
+    # Bridge Layer
+    "app.bridge",
+    "app.bridge.crm_bridge",
+    "app.bridge.students_bridge",
+    "app.bridge.courses_bridge",
+    "app.bridge.staff_bridge",
+    "app.bridge.finance_bridge",
+    "app.bridge.messaging_bridge",
+    "app.bridge.reports_bridge",
+    "app.bridge.updater_bridge",
+    # PySide6 Qt Quick / QML
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+    "PySide6.QtQuickControls2",
+    "PySide6.QtQuickLayouts",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "PySide6.QtPrintSupport",
     # Third-party
     "sqlalchemy.dialects.sqlite",
     "reportlab",
@@ -77,10 +65,6 @@ HIDDEN_IMPORTS = [
     "openpyxl",
     "PIL",
     "PIL.Image",
-    "PySide6.QtCore",
-    "PySide6.QtGui",
-    "PySide6.QtWidgets",
-    "PySide6.QtPrintSupport",
 ]
 
 # Build PyInstaller command with --onefile
@@ -97,6 +81,11 @@ cmd = [
     "--paths",
     str(ROOT_DIR),
 ]
+
+# Add UI design system and QML assets
+ui_assets = ROOT_DIR / "ui"
+if ui_assets.exists():
+    cmd.extend(["--add-data", f"{ui_assets};ui"])
 
 # Add assets directory if it exists
 messaging_assets = ROOT_DIR / "app" / "modules" / "messaging" / "assets"
@@ -172,7 +161,7 @@ if src_version.exists():
 
 # 4. Create README for end users
 readme_content = """========================================================================
-ISOLATED CRM (PORTABLE DESKTOP EDITION)
+PERSONAL CRM (PORTABLE DESKTOP EDITION - QT QUICK ARCHITECTURE)
 ========================================================================
 
 HOW TO RUN:
@@ -218,4 +207,3 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
 zip_size_mb = zip_path.stat().st_size / (1024 * 1024)
 print(f"[SUCCESS] Standalone package ready: {zip_path} ({zip_size_mb:.1f} MB)")
 print("========================================================")
-
