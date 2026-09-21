@@ -85,10 +85,30 @@ def main():
 
     # 5. Initialize QML Engine & Register Context Properties
     engine = QQmlApplicationEngine()
+    engine.warnings.connect(lambda warnings: [logger.warning(f"QML Warning: {w.toString()}") for w in warnings])
 
-    ui_dir = PROJECT_ROOT / "ui"
+    # Search candidates for UI directory (source mode and frozen PyInstaller mode)
+    ui_candidates = [
+        PROJECT_ROOT / "ui",
+        Path(getattr(sys, "_MEIPASS", "")) / "ui" if hasattr(sys, "_MEIPASS") else None,
+        Path(sys.executable).resolve().parent / "ui" if getattr(sys, "frozen", False) else None,
+        ROOT_DIR / "ui",
+    ]
+    ui_dir = None
+    for cand in ui_candidates:
+        if cand and cand.exists() and (cand / "Main.qml").exists():
+            ui_dir = cand
+            break
+
+    if not ui_dir:
+        ui_dir = PROJECT_ROOT / "ui"
+
+    logger.info(f"Using QML UI Directory: {ui_dir}")
     engine.addImportPath(str(ui_dir))
-    engine.addImportPath(str(PROJECT_ROOT))
+    engine.addImportPath(str(ui_dir.parent))
+    if hasattr(sys, "_MEIPASS"):
+        engine.addImportPath(str(Path(sys._MEIPASS)))
+        engine.addImportPath(str(Path(sys._MEIPASS) / "PySide6" / "qml"))
 
     context = engine.rootContext()
     context.setContextProperty("crmBridge", crm_bridge)
@@ -104,12 +124,16 @@ def main():
     main_qml_path = ui_dir / "Main.qml"
     if not main_qml_path.exists():
         logger.critical(f"QML entrypoint not found at: {main_qml_path}")
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(None, "Startup Error", f"QML entrypoint not found at: {main_qml_path}")
         sys.exit(1)
 
     engine.load(QUrl.fromLocalFile(str(main_qml_path.resolve())))
 
     if not engine.rootObjects():
         logger.critical("Failed to load QML root object. Exiting...")
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(None, "Startup Error", "Failed to load CRM user interface.\nPlease check logs/crm.log for details.")
         sys.exit(1)
 
     # Clean shutdown hook

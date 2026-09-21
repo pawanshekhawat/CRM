@@ -105,6 +105,10 @@ if dlls_folder.exists():
 for imp in HIDDEN_IMPORTS:
     cmd.extend(["--hidden-import", imp])
 
+# Collect all PySide6 QML plugins, imports, and reportlab assets
+cmd.extend(["--collect-all", "PySide6"])
+cmd.extend(["--collect-all", "reportlab"])
+
 cmd.append(str(APP_MAIN))
 
 print("\nRunning PyInstaller (--onefile)...")

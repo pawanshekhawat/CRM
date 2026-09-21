@@ -352,27 +352,43 @@ echo ===================================================
 echo Applying Personal CRM Update...
 echo ===================================================
 
-:: Ensure application process exits
+:: Ensure previous application process exits cleanly
 taskkill /F /PID {current_pid} > nul 2>&1
 timeout /t 2 /nobreak > nul
 
-:: Replace PersonalCRM.exe
+:: Replace PersonalCRM.exe with retry loop
+set RETRY_COUNT=0
+:retry_replace
 if exist "{target_exe}.old" del /f /q "{target_exe}.old" > nul 2>&1
 move /y "{target_exe}" "{target_exe}.old" > nul 2>&1
+if exist "{target_exe}" (
+    set /a RETRY_COUNT+=1
+    if %RETRY_COUNT% lss 10 (
+        timeout /t 1 /nobreak > nul
+        goto retry_replace
+    )
+)
+
 copy /y "{new_exe_to_copy}" "{target_exe}" > nul 2>&1
 
 :: Clean up temporary update files
-del /f /q "{target_exe}.old" > nul 2>&1
-del /f /q "{new_exe_to_copy}" > nul 2>&1
-del /f /q "{update_path.resolve()}" > nul 2>&1
+if exist "{target_exe}.old" del /f /q "{target_exe}.old" > nul 2>&1
+if exist "{new_exe_to_copy}" del /f /q "{new_exe_to_copy}" > nul 2>&1
+if exist "{update_path.resolve()}" del /f /q "{update_path.resolve()}" > nul 2>&1
 
 echo.
 echo ===================================================
 echo [SUCCESS] Personal CRM has been updated!
-echo You can now double-click PersonalCRM.exe to launch.
+echo Launching updated Personal CRM...
 echo ===================================================
+timeout /t 1 > nul
+
+:: Automatically restart updated executable
+cd /d "{target_exe.parent}"
+start "" "{target_exe}"
+
 timeout /t 2 > nul
-del "%~f0"
+(goto) 2>nul & del "%~f0"
 exit
 """
         helper_bat.write_text(bat_content, encoding="utf-8")
